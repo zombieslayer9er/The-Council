@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from hashlib import sha256
@@ -166,3 +167,28 @@ def historical_cache_key(provider: ProviderId, request: HistoricalRequest) -> st
         f"{request.start.isoformat()}|{request.end.isoformat()}|{request.as_of.isoformat()}"
     )
     return sha256(material.encode()).hexdigest()[:24]
+
+
+def historical_content_identity(result: HistoricalBars) -> str:
+    """Stable replay identity excluding fetch time and transport/cache path."""
+    material = {
+        "provider": result.provider.value,
+        "request": result.request.model_dump(mode="json"),
+        "source_version": result.source_version,
+        "adapter_semantic_version": result.adapter_semantic_version,
+        "bars": [
+            {
+                "opened_at": bar.opened_at.isoformat(),
+                "closed_at": bar.closed_at.isoformat(),
+                "available_at": bar.available_at.isoformat(),
+                "open": bar.open.hex(),
+                "high": bar.high.hex(),
+                "low": bar.low.hex(),
+                "close": bar.close.hex(),
+                "volume": bar.volume.hex(),
+            }
+            for bar in result.bars
+        ],
+    }
+    canonical = json.dumps(material, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return sha256(canonical.encode()).hexdigest()

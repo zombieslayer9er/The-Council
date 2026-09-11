@@ -22,6 +22,10 @@ class MeanReversionAgent:
     window: int = 20
     entry_z_score: float = 1.0
 
+    @property
+    def warmup_bars(self) -> int:
+        return self.window
+
     def __post_init__(self) -> None:
         if (
             isinstance(self.window, bool)

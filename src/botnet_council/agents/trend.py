@@ -19,6 +19,10 @@ class TrendAgent:
     fast_window: int = 5
     slow_window: int = 20
 
+    @property
+    def warmup_bars(self) -> int:
+        return self.slow_window
+
     def __post_init__(self) -> None:
         if (
             isinstance(self.fast_window, bool)

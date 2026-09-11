@@ -22,6 +22,10 @@ class VolatilityAgent:
     window: int = 20
     elevated_threshold: float = 0.03
 
+    @property
+    def warmup_bars(self) -> int:
+        return self.window
+
     def __post_init__(self) -> None:
         if (
             isinstance(self.window, bool)

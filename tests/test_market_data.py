@@ -19,6 +19,7 @@ from botnet_council.market_data import (
     MarketDataQualityError,
     ParquetMarketDataCache,
     ProviderError,
+    ProviderId,
     ProviderRateLimitError,
     Timeframe,
 )
@@ -77,6 +78,31 @@ def test_documented_final_uncommitted_row_is_excluded_and_availability_is_explic
     assert [bar.opened_at for bar in result.bars] == [start]
     assert result.bars[0].closed_at == start + timedelta(hours=1)
     assert result.bars[0].available_at == start + timedelta(hours=1)
+
+
+def test_final_uncommitted_row_is_never_cached_or_reused(tmp_path: Path) -> None:
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = start + timedelta(hours=3)
+    payload = response(
+        [
+            row(start),
+            row(start + timedelta(hours=1)),
+            row(start + timedelta(hours=2)),
+            row(start, close="999"),
+        ],
+        end,
+    )
+    fake = FakeTransport([payload])
+    cached_provider = CachedHistoricalProvider(
+        provider(fake, end), ParquetMarketDataCache(tmp_path)
+    )
+
+    first = cached_provider.fetch_historical(request(start, end))
+    second = cached_provider.fetch_historical(request(start, end))
+
+    assert [bar.close for bar in first.bars] == [105.0, 105.0, 105.0]
+    assert second == first
+    assert len(fake.calls) == 1
 
 
 def test_as_of_excludes_committed_row_not_yet_causally_available() -> None:
@@ -185,7 +211,7 @@ def test_pagination_pages_merge_deterministically() -> None:
 def test_cache_round_trip_preserves_normalized_data_and_provenance(tmp_path: Path) -> None:
     start = datetime(2026, 1, 1, tzinfo=UTC)
     end = start + timedelta(hours=2)
-    fake = FakeTransport([response([row(start), row(end)], end)])
+    fake = FakeTransport([response([row(start), row(start + timedelta(hours=1)), row(end)], end)])
     result = provider(fake, end).fetch_historical(request(start, end))
     cache = ParquetMarketDataCache(tmp_path)
 
@@ -203,13 +229,34 @@ def test_cache_round_trip_preserves_normalized_data_and_provenance(tmp_path: Pat
     assert loaded == result
 
 
+def test_cache_round_trip_preserves_delayed_availability(tmp_path: Path) -> None:
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = start + timedelta(hours=2)
+    payload = response([row(start), row(start + timedelta(hours=1)), row(end)], end)
+    result = provider(FakeTransport([payload]), end).fetch_historical(request(start, end))
+    delayed = result.bars[0].model_copy(
+        update={"available_at": start + timedelta(hours=1, minutes=20)}
+    )
+    altered = result.model_copy(update={"bars": (delayed, result.bars[1])})
+    cache = ParquetMarketDataCache(tmp_path)
+
+    cache.store(altered)
+    loaded = cache.load(altered.provider, altered.request)
+
+    assert loaded is not None
+    assert loaded.bars[0].available_at == start + timedelta(hours=1, minutes=20)
+
+
 def test_neighboring_cache_entries_do_not_change_exact_request_result(tmp_path: Path) -> None:
     start = datetime(2026, 1, 1, tzinfo=UTC)
     end = start + timedelta(hours=2)
     exact_payload = response([row(start), row(start + timedelta(hours=1)), row(end)], end)
     exact = provider(FakeTransport([exact_payload]), end).fetch_historical(request(start, end))
     neighbor_start = start - timedelta(hours=1)
-    neighbor_payload = response([row(neighbor_start), row(start, close="106"), row(end)], end)
+    neighbor_payload = response(
+        [row(neighbor_start), row(start, close="106"), row(start + timedelta(hours=1)), row(end)],
+        end,
+    )
     neighbor = provider(FakeTransport([neighbor_payload]), end).fetch_historical(
         request(neighbor_start, end)
     )
@@ -265,36 +312,20 @@ def test_source_and_adapter_version_mismatches_invalidate_cache(tmp_path: Path) 
     )
 
 
-def test_incomplete_cache_entry_refreshes_until_range_is_complete(tmp_path: Path) -> None:
+def test_incomplete_coverage_is_not_persisted(tmp_path: Path) -> None:
     start = datetime(2026, 1, 1, tzinfo=UTC)
     end = start + timedelta(hours=3)
-    fake = FakeTransport(
-        [
-            response([row(start), row(end)], end),
-            response(
-                [
-                    row(start),
-                    row(start + timedelta(hours=1)),
-                    row(start + timedelta(hours=2)),
-                    row(end),
-                ],
-                end,
-            ),
-        ]
-    )
+    fake = FakeTransport([response([row(start), row(end)], end)])
     cached_provider = CachedHistoricalProvider(
         provider(fake, end), ParquetMarketDataCache(tmp_path)
     )
 
-    partial = cached_provider.fetch_historical(request(start, end))
-    complete = cached_provider.fetch_historical(request(start, end))
-    reused = cached_provider.fetch_historical(request(start, end))
+    requested = request(start, end)
+    cache = ParquetMarketDataCache(tmp_path)
 
-    assert partial.quality.coverage_complete is False
-    assert partial.quality.trailing_missing_intervals == 2
-    assert complete.quality.coverage_complete is True
-    assert reused == complete
-    assert len(fake.calls) == 2
+    with pytest.raises(MarketDataQualityError, match="incomplete historical coverage"):
+        cached_provider.fetch_historical(requested)
+    assert not cache.path_for(ProviderId.KRAKEN, requested).exists()
 
 
 def test_boundary_coverage_reports_leading_trailing_and_complete_ranges() -> None:

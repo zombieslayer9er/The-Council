@@ -17,6 +17,7 @@ from botnet_council.market_data.models import (
     ProviderId,
     ProviderMetadata,
     Timeframe,
+    historical_content_identity,
 )
 from botnet_council.market_data.quality import MarketDataQualityError
 
@@ -40,4 +41,5 @@ __all__ = [
     "ProviderMetadata",
     "ProviderRateLimitError",
     "Timeframe",
+    "historical_content_identity",
 ]

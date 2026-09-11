@@ -20,3 +20,11 @@ class SpecialistAgent(Protocol):
     def signal_type(self) -> SignalType: ...
 
     def analyze(self, snapshot: MarketSnapshot, context: AgentContext) -> AgentSignal: ...
+
+
+def warmup_bars(agent: SpecialistAgent) -> int:
+    """Return an agent's declared history requirement without widening its protocol."""
+    value = getattr(agent, "warmup_bars", 0)
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"agent {agent.agent_id!r} has an invalid warmup_bars declaration")
+    return value

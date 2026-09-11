@@ -14,3 +14,4 @@ htmlcov/
 .env
 paper_state/
 .market-data-cache/
+backtest-results/

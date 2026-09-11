@@ -56,6 +56,8 @@ boundary contracts.
 - An atomic in-memory simulator with bounded fees/slippage and causal next-bar-open fills.
 - A pure Freqtrade DTO translator restricted to `dry_run` and `backtest` modes.
 - Typed TOML configuration, structured JSON logging, tests, and extension guides.
+- A deterministic, event-driven single-instrument historical backtester with Kraken
+  input, strict coverage checks, causal next-open fills, JSON summaries, and Parquet ledgers.
 
 ## Quick start
 
@@ -68,6 +70,7 @@ python -m venv .venv
 python -m pip install -e ".[dev]"
 pytest
 python -m botnet_council
+python -m botnet_council backtest --start 2026-09-08T20:00:00Z --end 2026-09-08T23:00:00Z
 ```
 
 The demo uses generated bars and an in-memory paper account. Configuration lives in
@@ -81,7 +84,8 @@ specialist. An OpenAI Agents SDK wrapper or local-model wrapper belongs inside a
 agent implementation and must convert provider output into a validated
 `AgentSignal`; the council protocol does not change.
 
-Implement `MarketDataProvider` for historical files or a read-only market feed.
+Implement `MarketDataProvider` and `HistoricalMarketDataProvider` for historical files
+or a read-only market feed.
 Implement `ExecutionAdapter` only for simulation. Freqtrade-specific code belongs
 under `adapters/`; see [`docs/extending.md`](docs/extending.md).
 Kraken timestamp and cache semantics are documented in
@@ -108,5 +112,5 @@ docs/                           architecture and extension notes
 
 - Real-money execution, exchange authentication, secret management, or live orders.
 - Autonomous access from an AI/LLM component to an account or broker.
-- A full backtest engine, production persistence, portfolio optimizer, or UI.
+- Production persistence, portfolio optimizer, or UI.
 - Coupling the domain model to Freqtrade or any agent framework.

@@ -23,6 +23,10 @@ class RegimeClassificationAgent:
     trend_threshold: float = 0.01
     high_volatility_threshold: float = 0.03
 
+    @property
+    def warmup_bars(self) -> int:
+        return self.window
+
     def __post_init__(self) -> None:
         values = (self.trend_threshold, self.high_volatility_threshold)
         if (

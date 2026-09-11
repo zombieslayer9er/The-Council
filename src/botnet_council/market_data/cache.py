@@ -111,6 +111,8 @@ class ParquetMarketDataCache:
     def store(self, result: HistoricalBars) -> Path:
         # Exact-request artifacts are intentionally not composed with neighboring files.
         self._verify_content_quality(result)
+        if not result.quality.coverage_complete:
+            raise MarketDataQualityError("refusing to cache incomplete historical coverage")
         path = self.path_for(result.provider, result.request)
         path.parent.mkdir(parents=True, exist_ok=True)
         metadata = {

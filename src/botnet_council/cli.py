@@ -1,10 +1,11 @@
-"""Deterministic demo plus an explicit, read-only historical download command."""
+"""Deterministic demo, historical download, and backtest commands."""
 
 from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any, cast
 
 from botnet_council.agents import (
     MeanReversionAgent,
@@ -12,12 +13,14 @@ from botnet_council.agents import (
     TrendAgent,
     VolatilityAgent,
 )
+from botnet_council.backtest import AgentConfig, BacktestConfig, BacktestEngine, persist_backtest
 from botnet_council.config import load_config
 from botnet_council.council import DeterministicCouncil
 from botnet_council.execution import PaperExecutionAdapter
 from botnet_council.logging import configure_logging
 from botnet_council.market_data import (
     Asset,
+    CachedHistoricalProvider,
     HistoricalRequest,
     InMemoryMarketDataProvider,
     Instrument,
@@ -85,13 +88,12 @@ def run_demo() -> None:
 
 
 def download_market_data(args: argparse.Namespace) -> None:
-    end = datetime.fromisoformat(args.end.replace("Z", "+00:00")).astimezone(UTC)
-    start = datetime.fromisoformat(args.start.replace("Z", "+00:00")).astimezone(UTC)
-    base, quote = args.symbol.split("/", maxsplit=1)
-    instrument = Instrument(base=Asset(base), quote=Asset(quote))
+    end = _parse_datetime(cast(str, args.end))
+    start = _parse_datetime(cast(str, args.start))
+    instrument = _instrument(cast(str, args.symbol))
     request = HistoricalRequest(
         instrument=instrument,
-        timeframe=Timeframe(args.timeframe),
+        timeframe=Timeframe(cast(str, args.timeframe)),
         start=start,
         end=end,
         as_of=end,
@@ -99,7 +101,7 @@ def download_market_data(args: argparse.Namespace) -> None:
     result = KrakenHistoricalProvider().fetch_historical(request)
     if not result.bars:
         raise LookupError("Kraken returned no committed candles for the requested range")
-    cache_path = ParquetMarketDataCache(Path(args.cache_dir)).store(result)
+    cache_path = ParquetMarketDataCache(Path(cast(str, args.cache_dir))).store(result)
     latest = result.bars[-1]
     snapshot = MarketSnapshot(
         symbol=instrument.symbol,
@@ -131,8 +133,58 @@ def download_market_data(args: argparse.Namespace) -> None:
     )
 
 
+def run_backtest(args: argparse.Namespace) -> None:
+    root = Path(__file__).resolve().parents[2]
+    app_config = load_config(root / "config" / "default.toml")
+    configure_logging(app_config.logging.level, app_config.logging.json_logs)
+    timeframe = Timeframe(cast(str, args.timeframe))
+    validity_seconds = int(timeframe.duration.total_seconds())
+    instrument = cast(str, args.instrument)
+    risk = app_config.risk.model_copy(
+        update={
+            "allowed_symbols": (instrument,),
+            "max_signal_age_seconds": validity_seconds,
+            "max_observation_age_seconds": validity_seconds,
+            "order_validity_seconds": validity_seconds,
+        }
+    )
+    agent_names = tuple(name.strip() for name in cast(str, args.agents).split(",") if name.strip())
+    config = BacktestConfig(
+        instrument=instrument,
+        timeframe=timeframe.value,
+        start=cast(datetime, args.start),
+        end=cast(datetime, args.end),
+        starting_cash=cast(float, args.starting_cash),
+        fee_bps=cast(float, args.fee_bps),
+        slippage_bps=cast(float, args.slippage_bps),
+        agents=tuple(AgentConfig(kind=cast(Any, name), parameters={}) for name in agent_names),
+        council=app_config.council,
+        risk=risk,
+    )
+    provider = CachedHistoricalProvider(
+        KrakenHistoricalProvider(),
+        ParquetMarketDataCache(root / ".market-data-cache"),
+    )
+    run = BacktestEngine(provider).run(config)
+    destination = persist_backtest(run, config, root / cast(str, args.output))
+    metrics = run.result.metrics
+    print(f"run_id={run.result.run_id}")
+    print(f"interval={config.start.isoformat()}..{config.end.isoformat()}")
+    print(f"agents={','.join(agent_names)}")
+    print(f"starting_equity={metrics.starting_equity:.2f}")
+    print(f"ending_equity={metrics.ending_equity:.2f}")
+    print(f"total_return={metrics.total_return:.6%}")
+    print(f"benchmark_return={run.result.benchmark.total_return:.6%}")
+    print(f"maximum_drawdown={metrics.maximum_drawdown:.6%}")
+    print(f"trades={metrics.number_of_trades}")
+    print(f"fees={metrics.total_fees:.2f}")
+    print(f"data_quality={run.result.data_quality_status}")
+    print(f"output={destination}")
+    print("profitability is not evidence of strategy quality")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog="botnet-council")
     subparsers = parser.add_subparsers(dest="command")
     download = subparsers.add_parser(
         "download-market-data", help="download committed Kraken Spot OHLC candles"
@@ -144,11 +196,37 @@ def main() -> None:
     download.add_argument("--start", required=True, help="inclusive ISO-8601 UTC timestamp")
     download.add_argument("--end", required=True, help="exclusive ISO-8601 UTC cutoff")
     download.add_argument("--cache-dir", default=".market-data-cache")
+    backtest = subparsers.add_parser("backtest", help="run a deterministic Kraken backtest")
+    backtest.add_argument("--instrument", default="BTC/USD", choices=("BTC/USD", "ETH/USD"))
+    backtest.add_argument(
+        "--timeframe", default="1h", choices=tuple(item.value for item in Timeframe)
+    )
+    backtest.add_argument("--start", required=True, type=_parse_datetime)
+    backtest.add_argument("--end", required=True, type=_parse_datetime)
+    backtest.add_argument("--agents", default="trend,mean_reversion")
+    backtest.add_argument("--starting-cash", default=100_000.0, type=float)
+    backtest.add_argument("--fee-bps", default=1.0, type=float)
+    backtest.add_argument("--slippage-bps", default=2.0, type=float)
+    backtest.add_argument("--output", default="backtest-results")
     args = parser.parse_args()
     if args.command == "download-market-data":
         download_market_data(args)
+    elif args.command == "backtest":
+        run_backtest(args)
     else:
         run_demo()
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise argparse.ArgumentTypeError("timestamps must include a timezone")
+    return parsed.astimezone(UTC)
+
+
+def _instrument(symbol: str) -> Instrument:
+    base, quote = symbol.split("/", maxsplit=1)
+    return Instrument(base=Asset(base), quote=Asset(quote))
 
 
 if __name__ == "__main__":

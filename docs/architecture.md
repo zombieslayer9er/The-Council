@@ -68,3 +68,7 @@ Given identical ordered data, timestamps, signals, policy, cost bounds, and port
 state, council and risk outputs—including identifiers—are identical. Floating-point
 calculations should still be replaced with fixed-point/decimal rules before any
 production-scale financial accounting.
+
+Historical replay preserves these contracts with the boundary micro-order documented in
+[`backtesting.md`](backtesting.md). In particular, an opening event at the same nominal
+timestamp as a candle close occurs first, so a close-informed order cannot consume it.

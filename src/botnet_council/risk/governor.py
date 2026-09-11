@@ -90,7 +90,11 @@ class DeterministicRiskGovernor:
             None,
         )
         current_quantity = 0.0 if current is None else current.quantity
-        current_notional = current_quantity * snapshot.last_price
+        current_notional = (
+            current_quantity * snapshot.last_price
+            if current is None
+            else current_quantity * current.mark_price
+        )
         target_notional = (
             decision.target_exposure * portfolio.equity * self._policy.max_position_fraction
         )
@@ -318,7 +322,7 @@ class DeterministicRiskGovernor:
             reasons.append("decision source does not match market snapshot")
         if snapshot.as_of > evaluated_at or snapshot.observed_at > evaluated_at:
             reasons.append("market snapshot is future-dated")
-        observation_age = evaluated_at - snapshot.latest_closed_at
+        observation_age = evaluated_at - snapshot.latest_available_at
         if observation_age < timedelta(0):
             reasons.append("market observation is future-dated")
         elif observation_age > timedelta(seconds=self._policy.max_observation_age_seconds):
@@ -331,11 +335,6 @@ class DeterministicRiskGovernor:
                 reasons.append(f"mark for {position.symbol} is future-dated")
             elif mark_age > timedelta(seconds=self._policy.max_observation_age_seconds):
                 reasons.append(f"mark for {position.symbol} is stale")
-            if position.symbol == snapshot.symbol and (
-                not isclose(position.mark_price, snapshot.last_price, rel_tol=1e-12)
-                or position.mark_observed_at != snapshot.latest_closed_at
-            ):
-                reasons.append("decision-symbol position is not marked from the source snapshot")
         decision_age = evaluated_at - decision.decided_at
         if decision_age < timedelta(0):
             reasons.append("council decision is future-dated")
