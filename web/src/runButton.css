@@ -1,0 +1,37 @@
+.connection.demo i {
+  background: var(--blue);
+  box-shadow: 0 0 12px #65a8ff88;
+}
+
+.primary {
+  border: 1px solid #3cae94;
+  background: linear-gradient(135deg, #51dfbd, #36b99d);
+  color: #041410;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 750;
+  font-size: 10px;
+  letter-spacing: .04em;
+  cursor: pointer;
+  box-shadow: 0 0 18px #51dfbd20;
+}
+
+.primary:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 0 22px #51dfbd38;
+}
+
+.primary:disabled {
+  cursor: wait;
+  opacity: .58;
+}
+
+.primary.large {
+  padding: 11px 18px;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .top-actions { gap: 7px; }
+  .top-actions .secondary { display: none; }
+}

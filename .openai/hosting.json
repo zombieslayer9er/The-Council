@@ -1,0 +1,9 @@
+{
+  "project_id": "appgprj_6aa468f4f6cc8191917fa1cc280f655b",
+  "build": {
+    "command": "cd web && pnpm install --frozen-lockfile && pnpm build"
+  },
+  "static": {
+    "directory": "web/dist"
+  }
+}

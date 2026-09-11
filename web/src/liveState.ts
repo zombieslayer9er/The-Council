@@ -9,6 +9,7 @@ import type {
 export type ConnectionStatus =
   | 'bootstrapping'
   | 'live'
+  | 'demo'
   | 'resynchronizing'
   | 'disconnected'
   | 'malformed';

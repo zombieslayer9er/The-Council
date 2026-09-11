@@ -8,6 +8,7 @@ import type {
   TelemetryEvent,
 } from '../../contracts/typescript/types.generated';
 import { bootstrap, loadRun, openEventStream } from './api';
+import { createDemoCouncilRun } from './demoCouncil';
 import { ContractError } from './validate';
 import { applyBootstrap, beginResync, bufferEvent, emptyLiveState, failLive, type ConnectionStatus } from './liveState';
 import { RequestGate } from './requestGate';
@@ -32,11 +33,14 @@ export default function App() {
   const [replayEvents, setReplayEvents] = useState<readonly TelemetryEvent[]>([]);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [loadingRun, setLoadingRun] = useState(false);
+  const [runningCouncil, setRunningCouncil] = useState(false);
+  const demoMode = useRef(false);
   const bootstrapGate = useRef(new RequestGate());
   const replayGate = useRef(new RequestGate());
   const hasBootstrapped = useRef(false);
 
   const resync = useCallback(async (initial = false) => {
+    demoMode.current = false;
     const request = bootstrapGate.current.begin();
     setLive((current) => beginResync(current, initial));
     try {
@@ -59,8 +63,8 @@ export default function App() {
       if (current.status === 'live' && next.status === 'resynchronizing') queueMicrotask(() => void resync(false));
       return next;
     }),
-    onDisconnect: () => setLive((current) => failLive(current, 'disconnected', 'Telemetry connection lost.')),
-    onMalformed: (message) => setLive((current) => failLive(current, 'malformed', message)),
+    onDisconnect: () => { if (!demoMode.current) setLive((current) => failLive(current, 'disconnected', 'Telemetry connection lost.')); },
+    onMalformed: (message) => { if (!demoMode.current) setLive((current) => failLive(current, 'malformed', message)); },
   }), [resync]);
   useEffect(() => {
     const handler = () => setView(viewFromHash());
@@ -78,6 +82,18 @@ export default function App() {
     } catch (cause) {
       if (!request.signal.aborted && replayGate.current.isCurrent(request.generation)) setLive((current) => ({ ...current, error: cause instanceof Error ? cause.message : 'Unable to load run.' }));
     } finally { if (replayGate.current.isCurrent(request.generation)) setLoadingRun(false); }
+  };
+  const runCouncil = async () => {
+    if (runningCouncil) return;
+    demoMode.current = true;
+    setRunningCouncil(true);
+    await new Promise((resolve) => window.setTimeout(resolve, 450));
+    const demo = createDemoCouncilRun();
+    setHealth(demo.health);
+    setLive((current) => ({ ...applyBootstrap(current, demo.bootstrap), status: 'demo' }));
+    setView('live');
+    location.hash = 'live';
+    setRunningCouncil(false);
   };
   const data = useMemo(() => {
     const projected = project(live.events);
@@ -119,6 +135,7 @@ export default function App() {
           </div>
           <div className="top-actions">
             <span className="sequence">{live.streamId ? `GEN ${live.streamId.slice(0, 8)} · ` : ''}SEQ {live.watermark.toLocaleString()}</span>
+            <button className="primary" disabled={runningCouncil} onClick={() => void runCouncil()}>{runningCouncil ? 'Running council…' : '▶ Run Council'}</button>
             <button className="secondary" onClick={() => void resync(false)}>↻ Resync</button>
           </div>
         </header>
@@ -126,7 +143,7 @@ export default function App() {
         {live.error && <div className="error-banner" role="alert"><span>{live.error}</span><button onClick={() => void resync(false)}>Retry</button></div>}
 
         <div className="content">
-          {view === 'live' && <LiveView data={data} connection={live.status} loading={live.status === 'bootstrapping' || live.status === 'resynchronizing'} />}
+          {view === 'live' && <LiveView data={data} connection={live.status} loading={live.status === 'bootstrapping' || live.status === 'resynchronizing'} onRun={runCouncil} running={runningCouncil} />}
           {view === 'history' && <HistoryView runs={live.runs} selected={selectedRun} events={replayEvents} onSelect={selectRun} loading={loadingRun} />}
           {view === 'backtests' && <BacktestsView runs={live.runs} />}
           {view === 'agents' && <AgentsView agents={live.agents} signals={data.signals} />}
@@ -138,7 +155,7 @@ export default function App() {
   );
 }
 
-function LiveView({ data, connection, loading }: { data: ReturnType<typeof project>; connection: ConnectionStatus; loading: boolean }) {
+function LiveView({ data, connection, loading, onRun, running }: { data: ReturnType<typeof project>; connection: ConnectionStatus; loading: boolean; onRun: () => Promise<void>; running: boolean }) {
   const { snapshot, decision, signals, risk, execution, reconciliation } = data;
   const latest = snapshot?.bars.at(-1);
   const previous = snapshot?.bars.at(-2);
@@ -148,7 +165,7 @@ function LiveView({ data, connection, loading }: { data: ReturnType<typeof proje
 
   if (!data.events.length && !loading) {
     const authoritative = connection === 'live';
-    return <EmptyState title={authoritative ? 'Awaiting the first council run' : 'Live state unavailable'} text={authoritative ? 'The console has an authoritative read-only snapshot. Start a pipeline or backtest with the same telemetry bus to populate this workspace.' : 'The console is not authoritative. Restore the telemetry connection and complete a REST resynchronization before using live state.'} />;
+    return <EmptyState title={authoritative ? 'Awaiting the first council run' : 'Run the council demonstration'} text={authoritative ? 'The console has an authoritative read-only snapshot. Run the deterministic browser demonstration or start a local pipeline to populate this workspace.' : 'The local telemetry API is unavailable. The browser demonstration uses generated market data and paper-only execution to exercise this interface safely.'} action={<button className="primary large" disabled={running} onClick={() => void onRun()}>{running ? 'Running council…' : '▶ Run Council'}</button>} />;
   }
   return <>
     <section className="market-strip panel">
@@ -283,6 +300,6 @@ function Detail({ label, value }: { label: string; value: string }) { return <di
 function PanelTitle({ kicker, title, extra }: { kicker: string; title: string; extra?: string }) { return <div className="panel-title"><div><p className="eyebrow">{kicker}</p><h2>{title}</h2></div>{extra && <span>{extra}</span>}</div>; }
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) { return <div className="section-title"><div><p className="eyebrow">Research workspace</p><h2>{title}</h2></div><p>{subtitle}</p></div>; }
 function InlineEmpty({ text }: { text: string }) { return <div className="inline-empty">{text}</div>; }
-function EmptyState({ title, text }: { title: string; text: string }) { return <div className="empty-state panel"><div className="empty-orbit"><i /></div><p className="eyebrow">No authoritative data</p><h2>{title}</h2><p>{text}</p><code>python -m botnet_council</code></div>; }
+function EmptyState({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) { return <div className="empty-state panel"><div className="empty-orbit"><i /></div><p className="eyebrow">Paper research workspace</p><h2>{title}</h2><p>{text}</p>{action ?? <code>python -m botnet_council</code>}</div>; }
 function viewFromHash(): View { const value = location.hash.slice(1) as View; return NAV.some((item) => item.key === value) ? value : 'live'; }
 function pageTitle(view: View, symbol?: string) { return view === 'live' ? `${symbol ?? 'Council'} research session` : NAV.find((item) => item.key === view)?.label ?? 'Console'; }
