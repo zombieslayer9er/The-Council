@@ -11,6 +11,7 @@ from typing import Any, cast
 from botnet_council.agents import (
     MeanReversionAgent,
     RegimeClassificationAgent,
+    SeasonalityAgent,
     SpecialistAgent,
     TrendAgent,
     VolatilityAgent,
@@ -66,7 +67,9 @@ class BacktestEngine:
     def run(self, config: BacktestConfig) -> BacktestRun:
         agents = _build_agents(config)
         delta = timeframe_delta(config.timeframe)
-        required_warmup = max((warmup_bars(agent) for agent in agents), default=0)
+        required_warmup = max(
+            (warmup_bars(agent, config.timeframe) for agent in agents), default=0
+        )
         effective_warmup = max(required_warmup, config.warmup_bars or 0)
         history_start = config.start - effective_warmup * delta
         # The extra bar exposes only its opening at evaluation_end. Its later fields
@@ -339,6 +342,7 @@ def _build_agents(config: BacktestConfig) -> tuple[SpecialistAgent, ...]:
         "mean_reversion": MeanReversionAgent,
         "volatility": VolatilityAgent,
         "regime": RegimeClassificationAgent,
+        "seasonality": SeasonalityAgent,
     }
     return tuple(constructors[item.kind](**dict(item.parameters)) for item in config.agents)
 

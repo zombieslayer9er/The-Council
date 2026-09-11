@@ -44,7 +44,7 @@ boundary contracts.
 - A common `SpecialistAgent` protocol and versioned, snapshot-bound `AgentSignal` schema.
 - Typed historical OHLCV requests, explicit candle availability, a read-only Kraken
   Spot adapter, quality/gap reports, and a provenance-preserving Parquet cache.
-- Simple deterministic Trend, Mean Reversion, Volatility, and Regime specialists.
+- Simple deterministic Trend, Mean Reversion, Seasonality, Volatility, and Regime specialists.
 - An order-independent weighted council. Only alpha signals vote directionally;
   volatility and regime signals remain attached as risk/research evidence.
 - Timestamped mark-to-market accounting with separate average entry and current mark,
@@ -90,6 +90,8 @@ Implement `ExecutionAdapter` only for simulation. Freqtrade-specific code belong
 under `adapters/`; see [`docs/extending.md`](docs/extending.md).
 Kraken timestamp and cache semantics are documented in
 [`docs/market-data.md`](docs/market-data.md).
+The fixed-hypothesis calendar matcher and its causal restrictions are documented in
+[`docs/seasonality.md`](docs/seasonality.md).
 
 ## Repository map
 

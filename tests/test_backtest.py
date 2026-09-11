@@ -49,7 +49,7 @@ class StaticHistoricalProvider:
             provider=ProviderId.IN_MEMORY,
             display_name="test fixture",
             supported_instruments=(Instrument(base=Asset.BTC, quote=Asset.USD),),
-            supported_timeframes=(Timeframe.MINUTE_5, Timeframe.MINUTE_15),
+            supported_timeframes=(Timeframe.MINUTE_5, Timeframe.MINUTE_15, Timeframe.DAY_1),
             maximum_rows=10_000,
             requires_credentials=False,
             timestamp_convention="fixture interval start/end",
@@ -174,6 +174,82 @@ def test_trend_and_trend_mean_reversion_baselines_both_run() -> None:
         {signal.agent_id for signal in event.signals} == {"trend", "mean_reversion"}
         for event in combined.ledger.events
     )
+
+
+def test_seasonality_agent_runs_through_council_backtest_path() -> None:
+    origin = datetime(2021, 12, 25, tzinfo=UTC)
+    step = timedelta(days=1)
+    bar_count = (datetime(2024, 1, 15, tzinfo=UTC) - origin).days
+
+    def seasonal_close(closed_at: datetime) -> float:
+        recurring = (
+            closed_at.year in (2022, 2023)
+            and closed_at.month == 1
+            and closed_at.day == 12
+        )
+        return 110.0 if recurring else 100.0
+
+    bars = tuple(
+        MarketBar(
+            opened_at=origin + index * step,
+            closed_at=origin + (index + 1) * step,
+            available_at=origin + (index + 1) * step,
+            open=100.0,
+            high=max(100.0, seasonal_close(origin + (index + 1) * step)),
+            low=min(100.0, seasonal_close(origin + (index + 1) * step)),
+            close=seasonal_close(origin + (index + 1) * step),
+            volume=10.0,
+        )
+        for index in range(bar_count)
+    )
+    provider = StaticHistoricalProvider(bars, fetched_at=bars[-1].closed_at)
+    start = datetime(2024, 1, 10, tzinfo=UTC)
+    config = BacktestConfig(
+        instrument="BTC/USD",
+        timeframe="1d",
+        start=start,
+        end=start + 3 * step,
+        starting_cash=1_000.0,
+        agents=(
+            AgentConfig(
+                kind="seasonality",
+                parameters={
+                    "tolerance_days": 0,
+                    "horizon_days": 2,
+                    "prior_years": 2,
+                    "minimum_independent_years": 2,
+                    "minimum_confidence": 0.0,
+                },
+            ),
+        ),
+        council=CouncilConfig(minimum_confidence=0.0, minimum_conviction=0.0),
+        risk=RiskPolicy(
+            minimum_confidence=0.0,
+            max_position_fraction=1.0,
+            max_gross_exposure_fraction=1.0,
+            max_order_notional=1_000.0,
+            minimum_cash_reserve_fraction=0.0,
+            max_realized_volatility=1.0,
+            max_signal_age_seconds=86_400,
+            max_observation_age_seconds=86_400,
+            order_validity_seconds=86_400,
+            allowed_symbols=("BTC/USD",),
+        ),
+    )
+
+    first = BacktestEngine(provider).run(config)
+    second = BacktestEngine(provider).run(config)
+    seasonal = tuple(
+        signal
+        for event in first.ledger.events
+        for signal in event.signals
+        if signal.agent_id == "seasonality"
+    )
+
+    assert seasonal
+    assert all(signal.metadata["sample_count"] == 2 for signal in seasonal)
+    assert first.result.trade_count >= 1
+    assert first == second
 
 
 def test_normalized_cached_and_uncached_inputs_have_same_deterministic_result() -> None:

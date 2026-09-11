@@ -1,7 +1,9 @@
 """The stable extension point for deterministic, ML, local-LLM, or hosted agents."""
 
+from math import ceil
 from typing import Protocol, runtime_checkable
 
+from botnet_council.agents._math import timeframe_delta
 from botnet_council.schemas import AgentContext, AgentSignal, MarketSnapshot, SignalType
 
 
@@ -22,8 +24,15 @@ class SpecialistAgent(Protocol):
     def analyze(self, snapshot: MarketSnapshot, context: AgentContext) -> AgentSignal: ...
 
 
-def warmup_bars(agent: SpecialistAgent) -> int:
+def warmup_bars(agent: SpecialistAgent, timeframe: str | None = None) -> int:
     """Return an agent's declared history requirement without widening its protocol."""
+    days = getattr(agent, "warmup_days", None)
+    if days is not None:
+        if isinstance(days, bool) or not isinstance(days, int) or days < 0:
+            raise ValueError(f"agent {agent.agent_id!r} has an invalid warmup_days declaration")
+        if timeframe is None:
+            raise ValueError("timeframe is required for a day-based warmup declaration")
+        return ceil(days * 86_400 / timeframe_delta(timeframe).total_seconds())
     value = getattr(agent, "warmup_bars", 0)
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"agent {agent.agent_id!r} has an invalid warmup_bars declaration")
