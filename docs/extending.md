@@ -21,9 +21,11 @@ changes to `DeterministicCouncil`.
 
 ## Add market data
 
-Implement `MarketDataProvider.snapshot(symbol, timeframe, *, as_of)`. Normalize times
-to UTC, return only bars completed at or before `as_of`, preserve `observed_at`, sort
-bars chronologically, and avoid attaching provider clients to domain objects.
+Implement `HistoricalMarketDataProvider.fetch_historical(HistoricalRequest)` and the
+compatibility `snapshot(symbol, timeframe, *, as_of)` boundary. Document the external
+provider's timestamp and candle-commitment behavior, translate it explicitly into
+UTC `opened_at`, `closed_at`, and `available_at`, and filter on `available_at <= as_of`.
+Never infer availability from a provider field name or fabricate missing intervals.
 
 ## Add a backtest adapter
 

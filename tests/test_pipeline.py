@@ -115,6 +115,7 @@ def test_historical_snapshot_filters_bars_after_as_of(
     future_bar = MarketBar(
         opened_at=as_of,
         closed_at=as_of + timedelta(minutes=5),
+        available_at=as_of + timedelta(minutes=5),
         open=130.0,
         high=132.0,
         low=129.0,
@@ -134,3 +135,30 @@ def test_historical_snapshot_filters_bars_after_as_of(
 
     assert historical.bars == rising_snapshot.bars
     assert all(bar.closed_at <= as_of for bar in historical.bars)
+
+
+def test_historical_snapshot_filters_by_availability_not_interval_end(
+    rising_snapshot: MarketSnapshot, as_of: datetime
+) -> None:
+    delayed = MarketBar(
+        opened_at=as_of,
+        closed_at=as_of + timedelta(minutes=5),
+        available_at=as_of + timedelta(minutes=6),
+        open=130.0,
+        high=132.0,
+        low=129.0,
+        close=131.0,
+        volume=1_000.0,
+    )
+    source = MarketSnapshot(
+        symbol="TEST/USD",
+        timeframe="5m",
+        as_of=delayed.available_at,
+        observed_at=delayed.available_at,
+        bars=(*rising_snapshot.bars, delayed),
+    )
+    provider = InMemoryMarketDataProvider({("TEST/USD", "5m"): source})
+
+    historical = provider.snapshot("TEST/USD", "5m", as_of=delayed.closed_at)
+
+    assert delayed not in historical.bars

@@ -13,4 +13,4 @@ htmlcov/
 *.log
 .env
 paper_state/
-
+.market-data-cache/

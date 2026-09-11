@@ -113,17 +113,18 @@ class DomainModel(BaseModel):
 
 
 class MarketBar(DomainModel):
-    """A candle whose values become observable only at ``closed_at``."""
+    """A completed candle with an explicit provider-derived availability time."""
 
     opened_at: datetime
     closed_at: datetime
+    available_at: datetime
     open: PositiveFiniteFloat
     high: PositiveFiniteFloat
     low: PositiveFiniteFloat
     close: PositiveFiniteFloat
     volume: NonNegativeFiniteFloat
 
-    @field_validator("opened_at", "closed_at")
+    @field_validator("opened_at", "closed_at", "available_at")
     @classmethod
     def validate_time(cls, value: datetime, info: Any) -> datetime:
         return _utc(value, info.field_name)
@@ -132,11 +133,41 @@ class MarketBar(DomainModel):
     def validate_bar(self) -> Self:
         if self.closed_at <= self.opened_at:
             raise ValueError("bar closed_at must be after opened_at")
+        if self.available_at < self.closed_at:
+            raise ValueError("bar available_at cannot precede interval end")
         if self.high < max(self.open, self.close) or self.low > min(self.open, self.close):
             raise ValueError("invalid OHLCV bar")
         if self.low > self.high:
             raise ValueError("invalid OHLCV bar")
         return self
+
+
+class SnapshotProvenance(DomainModel):
+    provider: str
+    instrument: str
+    timeframe: str
+    requested_start: datetime
+    requested_end: datetime
+    as_of: datetime
+    fetched_at: datetime
+    latest_observation_time: datetime
+    latest_available_at: datetime
+    source_version: str
+    adapter_semantic_version: str
+    coverage_complete: bool
+    cache_key: str
+
+    @field_validator(
+        "requested_start",
+        "requested_end",
+        "as_of",
+        "fetched_at",
+        "latest_observation_time",
+        "latest_available_at",
+    )
+    @classmethod
+    def validate_time(cls, value: datetime, info: Any) -> datetime:
+        return _utc(value, info.field_name)
 
 
 def snapshot_identity(
@@ -150,6 +181,7 @@ def snapshot_identity(
             *(
                 (
                     f"{bar.opened_at.isoformat()}:{bar.closed_at.isoformat()}:"
+                    f"{bar.available_at.isoformat()}:"
                     f"{bar.open.hex()}:{bar.high.hex()}:{bar.low.hex()}:"
                     f"{bar.close.hex()}:{bar.volume.hex()}"
                 )
@@ -168,6 +200,7 @@ class MarketSnapshot(DomainModel):
     as_of: datetime
     observed_at: datetime
     bars: tuple[MarketBar, ...]
+    provenance: SnapshotProvenance | None = None
     snapshot_id: str = ""
 
     @field_validator("as_of", "observed_at")
@@ -191,8 +224,8 @@ class MarketSnapshot(DomainModel):
         intervals = tuple((bar.opened_at, bar.closed_at) for bar in self.bars)
         if intervals != tuple(sorted(intervals)) or len(set(intervals)) != len(intervals):
             raise ValueError("bars must be unique and chronological")
-        if any(bar.closed_at > self.as_of for bar in self.bars):
-            raise ValueError("snapshot contains a bar completed after its as_of cutoff")
+        if any(bar.available_at > self.as_of for bar in self.bars):
+            raise ValueError("snapshot contains a bar unavailable at its as_of cutoff")
         if any(
             current.opened_at < previous.closed_at
             for previous, current in zip(self.bars, self.bars[1:], strict=False)
@@ -200,8 +233,18 @@ class MarketSnapshot(DomainModel):
             raise ValueError("snapshot bars cannot overlap")
         if self.observed_at < self.as_of:
             raise ValueError("snapshot cannot be observed before its as_of cutoff")
-        if self.observed_at < self.bars[-1].closed_at:
-            raise ValueError("snapshot cannot be observed before its newest bar closes")
+        if self.observed_at < self.bars[-1].available_at:
+            raise ValueError("snapshot cannot be observed before its newest bar is available")
+        if self.provenance is not None:
+            provenance = self.provenance
+            if provenance.instrument != self.symbol or provenance.timeframe != self.timeframe:
+                raise ValueError("snapshot provenance identity does not match snapshot")
+            if provenance.as_of != self.as_of:
+                raise ValueError("snapshot provenance as_of does not match snapshot")
+            if provenance.latest_observation_time != self.bars[-1].closed_at:
+                raise ValueError("snapshot provenance latest observation does not match bars")
+            if provenance.latest_available_at != self.bars[-1].available_at:
+                raise ValueError("snapshot provenance latest availability does not match bars")
         expected = snapshot_identity(self.symbol, self.timeframe, self.as_of, self.bars)
         if self.snapshot_id and self.snapshot_id != expected:
             raise ValueError("snapshot_id does not match snapshot contents")
@@ -215,6 +258,10 @@ class MarketSnapshot(DomainModel):
     @property
     def latest_closed_at(self) -> datetime:
         return self.bars[-1].closed_at
+
+    @property
+    def latest_available_at(self) -> datetime:
+        return self.bars[-1].available_at
 
 
 class PriceObservation(DomainModel):

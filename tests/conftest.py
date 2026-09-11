@@ -16,6 +16,7 @@ def rising_snapshot(as_of: datetime) -> MarketSnapshot:
         MarketBar(
             opened_at=as_of - timedelta(minutes=5 * (30 - index)),
             closed_at=as_of - timedelta(minutes=5 * (29 - index)),
+            available_at=as_of - timedelta(minutes=5 * (29 - index)),
             open=100.0 + index,
             high=102.0 + index,
             low=99.0 + index,

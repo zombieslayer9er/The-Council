@@ -21,6 +21,7 @@ def test_market_prices_reject_non_finite_values(as_of: datetime, bad: float) -> 
         MarketBar(
             opened_at=as_of - timedelta(minutes=5),
             closed_at=as_of,
+            available_at=as_of,
             open=100.0,
             high=101.0,
             low=99.0,

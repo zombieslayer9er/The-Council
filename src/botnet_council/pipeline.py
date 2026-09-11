@@ -94,7 +94,7 @@ class ResearchTradingPipeline:
                 PriceObservation(
                     symbol=held_symbol,
                     price=held_snapshot.last_price,
-                    observed_at=held_snapshot.latest_closed_at,
+                    observed_at=held_snapshot.latest_available_at,
                     source_snapshot_id=held_snapshot.snapshot_id,
                 )
             )

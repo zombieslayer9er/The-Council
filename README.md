@@ -42,6 +42,8 @@ boundary contracts.
 ## Included
 
 - A common `SpecialistAgent` protocol and versioned, snapshot-bound `AgentSignal` schema.
+- Typed historical OHLCV requests, explicit candle availability, a read-only Kraken
+  Spot adapter, quality/gap reports, and a provenance-preserving Parquet cache.
 - Simple deterministic Trend, Mean Reversion, Volatility, and Regime specialists.
 - An order-independent weighted council. Only alpha signals vote directionally;
   volatility and regime signals remain attached as risk/research evidence.
@@ -82,6 +84,8 @@ agent implementation and must convert provider output into a validated
 Implement `MarketDataProvider` for historical files or a read-only market feed.
 Implement `ExecutionAdapter` only for simulation. Freqtrade-specific code belongs
 under `adapters/`; see [`docs/extending.md`](docs/extending.md).
+Kraken timestamp and cache semantics are documented in
+[`docs/market-data.md`](docs/market-data.md).
 
 ## Repository map
 

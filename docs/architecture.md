@@ -48,10 +48,11 @@ level and keep credentials exclusively inside a separately audited execution ser
 
 ## Determinism
 
-`MarketBar.opened_at` and `closed_at` distinguish interval start from the moment a
-completed candle becomes observable. `MarketSnapshot.as_of` is the hard data cutoff;
-`observed_at` is when that snapshot is available. Providers must exclude every bar
-whose `closed_at` exceeds `as_of`.
+`MarketBar.opened_at`, `closed_at`, and `available_at` distinguish interval start,
+interval end, and the earliest provider-derived usability time. These values must not
+be inferred from similarly named provider fields. `MarketSnapshot.as_of` is the hard
+data cutoff; `observed_at` is when that snapshot is assembled. Providers must exclude
+every bar whose `available_at` exceeds `as_of`.
 
 Signals identify the exact snapshot, their generation and expiry times, agent version,
 forecast horizon in bars, expected decimal return, normalized target exposure, intent,

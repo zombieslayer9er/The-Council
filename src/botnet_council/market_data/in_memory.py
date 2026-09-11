@@ -16,7 +16,7 @@ class InMemoryMarketDataProvider:
             source = self.snapshots[(symbol, timeframe)]
         except KeyError as error:
             raise LookupError(f"no snapshot for {symbol} {timeframe}") from error
-        bars = tuple(bar for bar in source.bars if bar.closed_at <= as_of)
+        bars = tuple(bar for bar in source.bars if bar.available_at <= as_of)
         if not bars:
             raise LookupError(f"no completed bars for {symbol} {timeframe} at cutoff")
         return MarketSnapshot(
