@@ -33,6 +33,8 @@ from botnet_council.schemas import (
     RiskReconciliation,
     RiskStatus,
 )
+from botnet_council.telemetry.contracts import EventType
+from botnet_council.telemetry.publisher import InMemoryEventBus
 
 
 class StaticHistoricalProvider:
@@ -150,6 +152,25 @@ def test_identical_inputs_produce_identical_run_and_ledger() -> None:
     assert first.result.metrics == second.result.metrics
     valued_at = tuple(event.portfolio.valued_at for event in first.ledger.events)
     assert valued_at == tuple(sorted(valued_at))
+
+
+def test_backtest_telemetry_exposes_replay_chain_without_changing_ledger() -> None:
+    provider, config = _fixture()
+    bus = InMemoryEventBus()
+
+    observed = BacktestEngine(provider, telemetry=bus).run(config)
+    expected = BacktestEngine(provider).run(config)
+    event_types = {item.event_type for item in bus.list_events()}
+
+    assert observed == expected
+    assert EventType.BACKTEST_STARTED in event_types
+    assert EventType.BACKTEST_PROGRESS in event_types
+    assert EventType.BACKTEST_COMPLETED in event_types
+    assert EventType.SNAPSHOT_CREATED in event_types
+    assert EventType.AGENT_SIGNAL_EMITTED in event_types
+    assert EventType.COUNCIL_DECISION_EMITTED in event_types
+    assert EventType.RISK_DECISION_EMITTED in event_types
+    assert EventType.PORTFOLIO_UPDATED in event_types
 
 
 def test_trend_and_trend_mean_reversion_baselines_both_run() -> None:

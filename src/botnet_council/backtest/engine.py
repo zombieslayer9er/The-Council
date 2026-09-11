@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
+from functools import partial
 from hashlib import sha256
 from math import isclose
 from typing import Any, cast
@@ -56,13 +58,46 @@ from botnet_council.schemas import (
     PriceObservation,
     RiskStatus,
 )
+from botnet_council.telemetry.contracts import (
+    BacktestPayload,
+    EventType,
+    StagePayload,
+    TelemetryPayload,
+)
+from botnet_council.telemetry.events import event as telemetry_event
+from botnet_council.telemetry.publisher import EventPublisher, safe_publish
+from botnet_council.telemetry.serializers import (
+    agent_signal as serialize_agent_signal,
+)
+from botnet_council.telemetry.serializers import (
+    approved_order as serialize_approved_order,
+)
+from botnet_council.telemetry.serializers import (
+    council_decision as serialize_council_decision,
+)
+from botnet_council.telemetry.serializers import (
+    execution_report as serialize_execution_report,
+)
+from botnet_council.telemetry.serializers import portfolio as serialize_portfolio
+from botnet_council.telemetry.serializers import (
+    reconciliation as serialize_reconciliation,
+)
+from botnet_council.telemetry.serializers import (
+    risk_decision as serialize_risk_decision,
+)
+from botnet_council.telemetry.serializers import snapshot as serialize_snapshot
 
 
 class BacktestEngine:
-    def __init__(self, market_data: HistoricalMarketDataProvider) -> None:
+    def __init__(
+        self,
+        market_data: HistoricalMarketDataProvider,
+        telemetry: EventPublisher | None = None,
+    ) -> None:
         if not isinstance(market_data, HistoricalMarketDataProvider):
             raise TypeError("backtests require a historical market-data provider")
         self._market_data = market_data
+        self._telemetry = telemetry
 
     def run(self, config: BacktestConfig) -> BacktestRun:
         agents = _build_agents(config)
@@ -97,6 +132,13 @@ class BacktestEngine:
         replay = _replay_provider(config, history.bars, history_end)
         content_identity = historical_content_identity(history)
         run_id = sha256(f"{config.identity}|{content_identity}".encode()).hexdigest()
+        self._emit(
+            EventType.BACKTEST_STARTED,
+            run_id,
+            config.start,
+            BacktestPayload(status="started"),
+            config,
+        )
         execution = PaperExecutionAdapter(
             config.starting_cash,
             opened_at=history.bars[0].opened_at,
@@ -146,7 +188,30 @@ class BacktestEngine:
                     bar_opened_at=simulation_time,
                     observed_at=simulation_time,
                 )
+                executing_order = pending
+                self._emit(
+                    EventType.EXECUTION_STARTED,
+                    run_id,
+                    simulation_time,
+                    StagePayload(
+                        stage="execution",
+                        decision_id=executing_order.decision_id,
+                        order_id=executing_order.authorization_id,
+                    ),
+                    config,
+                    source_snapshot_id=executing_order.source_snapshot_id,
+                    correlation_id=executing_order.decision_id,
+                )
                 report = execution.execute(pending, opening, submitted_at=pending.authorized_at)
+                self._emit(
+                    EventType.EXECUTION_REPORT_EMITTED,
+                    run_id,
+                    simulation_time,
+                    partial(serialize_execution_report, report, executing_order),
+                    config,
+                    source_snapshot_id=executing_order.source_snapshot_id,
+                    correlation_id=executing_order.decision_id,
+                )
                 status = (
                     OrderLifecycleStatus.FILLED
                     if report.status is ExecutionStatus.FILLED
@@ -156,6 +221,15 @@ class BacktestEngine:
                 if report.status is ExecutionStatus.FILLED:
                     after_fill = execution.portfolio_state()
                     reconciliation = governor.reconcile(pending, report, before_fill, after_fill)
+                    self._emit(
+                        EventType.RECONCILIATION_COMPLETED,
+                        run_id,
+                        simulation_time,
+                        partial(serialize_reconciliation, reconciliation, executing_order),
+                        config,
+                        source_snapshot_id=executing_order.source_snapshot_id,
+                        correlation_id=executing_order.decision_id,
+                    )
                     if not reconciliation.compliant:
                         raise RuntimeError(
                             "post-fill reconciliation failed: " + "; ".join(reconciliation.reasons)
@@ -178,6 +252,15 @@ class BacktestEngine:
                 bar.available_at > simulation_time for bar in snapshot.bars
             ):
                 raise RuntimeError("future observation reached the replay snapshot")
+            if snapshot is not None:
+                self._emit(
+                    EventType.SNAPSHOT_CREATED,
+                    run_id,
+                    simulation_time,
+                    partial(serialize_snapshot, snapshot),
+                    config,
+                    source_snapshot_id=snapshot.snapshot_id,
+                )
             latest_market_mark = _select_latest_market_mark(
                 latest_market_mark,
                 snapshot=snapshot,
@@ -186,6 +269,14 @@ class BacktestEngine:
                 symbol=config.instrument,
             )
             portfolio = _mark(execution, latest_market_mark, simulation_time)
+            self._emit(
+                EventType.PORTFOLIO_UPDATED,
+                run_id,
+                simulation_time,
+                partial(serialize_portfolio, portfolio),
+                config,
+                source_snapshot_id=None if snapshot is None else snapshot.snapshot_id,
+            )
             signals: tuple[AgentSignal, ...] = ()
             decision = None
             risk_decision = None
@@ -196,10 +287,53 @@ class BacktestEngine:
                     run_id=run_id,
                     parameters={"random_seed": config.random_seed},
                 )
-                signals = tuple(agent.analyze(snapshot, context) for agent in agents)
+                collected: list[AgentSignal] = []
+                for agent in agents:
+                    self._emit(
+                        EventType.AGENT_STARTED,
+                        run_id,
+                        simulation_time,
+                        StagePayload(
+                            stage="agent",
+                            agent_id=agent.agent_id,
+                            agent_version=getattr(agent, "agent_version", None),
+                        ),
+                        config,
+                        source_snapshot_id=snapshot.snapshot_id,
+                        correlation_id=agent.agent_id,
+                    )
+                    current_signal = agent.analyze(snapshot, context)
+                    collected.append(current_signal)
+                    self._emit(
+                        EventType.AGENT_SIGNAL_EMITTED,
+                        run_id,
+                        simulation_time,
+                        partial(serialize_agent_signal, current_signal),
+                        config,
+                        source_snapshot_id=snapshot.snapshot_id,
+                        correlation_id=current_signal.agent_id,
+                    )
+                signals = tuple(collected)
                 if any(signal.generated_at > simulation_time for signal in signals):
                     raise RuntimeError("agent emitted a future-dated signal")
+                self._emit(
+                    EventType.COUNCIL_ROUND_STARTED,
+                    run_id,
+                    simulation_time,
+                    StagePayload(stage="council", total_agents=len(signals)),
+                    config,
+                    source_snapshot_id=snapshot.snapshot_id,
+                )
                 decision = council.aggregate(snapshot, signals)
+                self._emit(
+                    EventType.COUNCIL_DECISION_EMITTED,
+                    run_id,
+                    simulation_time,
+                    partial(serialize_council_decision, decision),
+                    config,
+                    source_snapshot_id=snapshot.snapshot_id,
+                    correlation_id=decision.decision_id,
+                )
                 if decision.action in (ActionIntent.TARGET_EXPOSURE, ActionIntent.REDUCE_ONLY):
                     lifecycle.append(
                         OrderLifecycleRecord(
@@ -209,13 +343,50 @@ class BacktestEngine:
                             source_snapshot_id=snapshot.snapshot_id,
                         )
                     )
+                self._emit(
+                    EventType.RISK_EVALUATION_STARTED,
+                    run_id,
+                    simulation_time,
+                    StagePayload(stage="risk", decision_id=decision.decision_id),
+                    config,
+                    source_snapshot_id=snapshot.snapshot_id,
+                    correlation_id=decision.decision_id,
+                )
                 risk_decision = governor.evaluate(
                     decision, snapshot, portfolio, execution.cost_bounds, simulation_time
                 )
+                self._emit(
+                    EventType.RISK_DECISION_EMITTED,
+                    run_id,
+                    simulation_time,
+                    partial(serialize_risk_decision, risk_decision, decision, portfolio),
+                    config,
+                    source_snapshot_id=snapshot.snapshot_id,
+                    correlation_id=decision.decision_id,
+                )
+                if risk_decision.status is RiskStatus.VETOED:
+                    self._emit(
+                        EventType.RISK_VETOED,
+                        run_id,
+                        simulation_time,
+                        partial(serialize_risk_decision, risk_decision, decision, portfolio),
+                        config,
+                        source_snapshot_id=snapshot.snapshot_id,
+                        correlation_id=decision.decision_id,
+                    )
                 if risk_decision.status is RiskStatus.APPROVED:
                     queued_order = risk_decision.approved_order
                     if queued_order is None:
                         raise RuntimeError("risk approval did not include an order")
+                    self._emit(
+                        EventType.ORDER_APPROVED,
+                        run_id,
+                        simulation_time,
+                        partial(serialize_approved_order, queued_order),
+                        config,
+                        source_snapshot_id=snapshot.snapshot_id,
+                        correlation_id=decision.decision_id,
+                    )
                     lifecycle.extend(
                         (
                             _lifecycle(
@@ -274,6 +445,24 @@ class BacktestEngine:
                     measured=measured,
                 )
             )
+            self._emit(
+                EventType.BACKTEST_PROGRESS,
+                run_id,
+                simulation_time,
+                BacktestPayload(
+                    status="in_progress",
+                    current=len(events),
+                    total=len(event_times),
+                    progress=len(events) / len(event_times),
+                    event_count=len(events),
+                    trade_count=sum(
+                        item.execution_report is not None
+                        and item.execution_report.status is ExecutionStatus.FILLED
+                        for item in events
+                    ),
+                ),
+                config,
+            )
 
         if pending is not None:
             raise RuntimeError("backtest ended with an unprocessed queued order")
@@ -331,9 +520,56 @@ class BacktestEngine:
             trade_count=trade_count,
             data_quality_status="complete",
         )
-        return BacktestRun(
+        run = BacktestRun(
             result=result, ledger=BacktestLedger(run_id=run_id, events=tuple(events))
         )
+        self._emit(
+            EventType.BACKTEST_COMPLETED,
+            run_id,
+            config.end,
+            BacktestPayload(
+                status="completed",
+                current=len(events),
+                total=len(events),
+                progress=1.0,
+                event_count=len(events),
+                trade_count=trade_count,
+            ),
+            config,
+        )
+        return run
+
+    def _emit(
+        self,
+        event_type: EventType,
+        run_id: str,
+        emitted_at: datetime,
+        payload: TelemetryPayload | Callable[[], TelemetryPayload],
+        config: BacktestConfig,
+        *,
+        source_snapshot_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> None:
+        if self._telemetry is None:
+            return
+        try:
+            resolved = payload() if callable(payload) else payload
+            safe_publish(
+                self._telemetry,
+                telemetry_event(
+                    event_type,
+                    run_id=run_id,
+                    emitted_at=emitted_at,
+                    payload=resolved,
+                    symbol=config.instrument,
+                    timeframe=config.timeframe,
+                    source_snapshot_id=source_snapshot_id,
+                    correlation_id=correlation_id or run_id,
+                ),
+            )
+        except Exception:
+            # Observability must never change deterministic replay output.
+            return
 
 
 def _build_agents(config: BacktestConfig) -> tuple[SpecialistAgent, ...]:

@@ -58,6 +58,9 @@ boundary contracts.
 - Typed TOML configuration, structured JSON logging, tests, and extension guides.
 - A deterministic, event-driven single-instrument historical backtester with Kraken
   input, strict coverage checks, causal next-open fills, JSON summaries, and Parquet ledgers.
+- A versioned, read-only telemetry boundary with ordered in-process pub/sub, REST/WebSocket
+  observation, causal replay IDs, and generated TypeScript contracts. See
+  [`docs/telemetry-api.md`](docs/telemetry-api.md).
 
 ## Quick start
 
@@ -76,6 +79,21 @@ python -m botnet_council backtest --start 2026-09-08T20:00:00Z --end 2026-09-08T
 The demo uses generated bars and an in-memory paper account. Configuration lives in
 [`config/default.toml`](config/default.toml). No `.env` or credential fields are
 needed or supported.
+
+### Telemetry dashboard
+
+Run the API and web console in separate terminals:
+
+```bash
+botnet-council-api
+cd web
+pnpm install
+pnpm dev
+```
+
+Open `http://127.0.0.1:5173`. Vite proxies the versioned REST API and read-only
+WebSocket stream to `127.0.0.1:8000`. The dashboard never submits orders or mutates
+domain state; it renders only telemetry emitted by the API process.
 
 ## Extension points
 
@@ -104,15 +122,18 @@ src/botnet_council/
   execution/                    paper-only execution contract and simulator
   market_data/                  read-only market data contract
   adapters/                     external-framework translation boundaries
+  telemetry/                    public event contracts, serializers, store, and publisher
+  api/                          optional read-only FastAPI and WebSocket boundary
   schemas.py                    immutable cross-module contracts
   pipeline.py                   composition root
 tests/                          unit and boundary tests
 docs/                           architecture and extension notes
+web/                            React telemetry console
 ```
 
 ## Non-goals for this scaffold
 
 - Real-money execution, exchange authentication, secret management, or live orders.
 - Autonomous access from an AI/LLM component to an account or broker.
-- Production persistence, portfolio optimizer, or UI.
+- Production persistence or portfolio optimizer.
 - Coupling the domain model to Freqtrade or any agent framework.
