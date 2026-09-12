@@ -11,7 +11,7 @@ from botnet_council.backtest.authoritative import (
     ValidationKind,
     ValidationStatus,
 )
-from botnet_council.backtest.engine import BacktestEngine
+from botnet_council.backtest.engine import BacktestCancelledError, BacktestEngine
 from botnet_council.backtest.episode import EpisodeRecord, episode_identity
 from botnet_council.backtest.freqtrade import (
     DockerComposeCommandRunner,
@@ -45,6 +45,7 @@ __all__ = [
     "BacktestConfig",
     "BacktestDataProvenance",
     "BacktestEngine",
+    "BacktestCancelledError",
     "BacktestEvent",
     "BacktestLedger",
     "BacktestResult",

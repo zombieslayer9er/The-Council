@@ -380,9 +380,11 @@ class HealthResponse(PublicModel):
         Literal[
             "telemetry_read",
             "experiment_read",
+            "historical_read",
             "experience_read",
             "learning_read",
             "experiment_control",
+            "historical_control",
         ],
         ...,
     ]

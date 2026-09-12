@@ -1,7 +1,15 @@
+from collections.abc import Iterable, Mapping
 from datetime import datetime
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
-from botnet_council.market_data.models import HistoricalBars, HistoricalRequest, ProviderMetadata
+from botnet_council.market_data.models import (
+    AvailabilityRange,
+    HistoricalBars,
+    HistoricalRequest,
+    Instrument,
+    ProviderMetadata,
+    Timeframe,
+)
 from botnet_council.schemas import MarketSnapshot
 
 
@@ -22,3 +30,22 @@ class HistoricalMarketDataProvider(MarketDataProvider, Protocol):
     def adapter_semantic_version(self) -> str: ...
 
     def fetch_historical(self, request: HistoricalRequest) -> HistoricalBars: ...
+
+
+@runtime_checkable
+class HistoricalDataProvider(HistoricalMarketDataProvider, Protocol):
+    """Discovery and acquisition boundary for substantial historical datasets."""
+
+    def list_markets(self) -> tuple[str, ...]: ...
+
+    def list_pairs(self, market: str) -> tuple[Instrument, ...]: ...
+
+    def inspect_availability(
+        self, market: str, instrument: Instrument, timeframe: Timeframe
+    ) -> tuple[AvailabilityRange, ...]: ...
+
+    def fetch_range(self, request: HistoricalRequest) -> HistoricalBars: ...
+
+    def normalize(
+        self, rows: Iterable[Mapping[str, Any]], request: HistoricalRequest
+    ) -> HistoricalBars: ...

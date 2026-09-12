@@ -14,6 +14,7 @@ from botnet_council.schemas import MarketBar
 
 
 class ProviderId(StrEnum):
+    FREQTRADE = "freqtrade"
     KRAKEN = "kraken"
     IN_MEMORY = "in_memory"
 
@@ -80,6 +81,7 @@ class HistoricalRequest(MarketDataModel):
     start: datetime
     end: datetime
     as_of: datetime
+    market: str = ""
 
     @field_validator("start", "end", "as_of")
     @classmethod
@@ -90,6 +92,10 @@ class HistoricalRequest(MarketDataModel):
     def valid_range(self) -> Self:
         if self.end <= self.start:
             raise ValueError("historical range end must be after start")
+        if any(
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for character in self.market
+        ):
+            raise ValueError("market must be a lowercase provider-safe identifier")
         return self
 
 
@@ -102,6 +108,28 @@ class ProviderMetadata(MarketDataModel):
     requires_credentials: bool
     timestamp_convention: str
     availability_convention: str
+
+
+class AvailabilityRange(MarketDataModel):
+    provider: ProviderId
+    market: str = ""
+    instrument: Instrument
+    timeframe: Timeframe
+    start: datetime
+    end: datetime
+    source_version: str
+    adapter_semantic_version: str
+
+    @field_validator("start", "end")
+    @classmethod
+    def normalize_time(cls, value: datetime, info: ValidationInfo) -> datetime:
+        return _utc(value, info.field_name or "datetime")
+
+    @model_validator(mode="after")
+    def valid_range(self) -> Self:
+        if self.end <= self.start:
+            raise ValueError("availability end must be after start")
+        return self
 
 
 class DataGap(MarketDataModel):
@@ -163,7 +191,7 @@ class HistoricalBars(MarketDataModel):
 
 def historical_cache_key(provider: ProviderId, request: HistoricalRequest) -> str:
     material = (
-        f"{provider.value}|{request.instrument.symbol}|{request.timeframe.value}|"
+        f"{provider.value}|{request.market}|{request.instrument.symbol}|{request.timeframe.value}|"
         f"{request.start.isoformat()}|{request.end.isoformat()}|{request.as_of.isoformat()}"
     )
     return sha256(material.encode()).hexdigest()[:24]

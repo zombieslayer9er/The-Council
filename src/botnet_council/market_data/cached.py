@@ -49,20 +49,41 @@ class CachedHistoricalProvider:
             and request.end <= cached.fetched_at
         ):
             return cached
-        result = self._provider.fetch_historical(request)
-        if result.source_version != self.source_version:
-            raise ValueError("provider result source version does not match provider capability")
-        if result.adapter_semantic_version != self.adapter_semantic_version:
-            raise ValueError("provider result adapter version does not match provider capability")
-        self._cache.store(result)
-        loaded = self._cache.load(
-            result.provider,
+        composed = self._cache.load_range(
+            self.metadata.provider,
+            request,
+            expected_source_version=self.source_version,
+            expected_adapter_semantic_version=self.adapter_semantic_version,
+        )
+        if composed is not None:
+            self._cache.store(composed)
+            return composed
+        missing = self._cache.missing_ranges(
+            self.metadata.provider,
+            request,
+            expected_source_version=self.source_version,
+            expected_adapter_semantic_version=self.adapter_semantic_version,
+        ) or (request,)
+        for part in missing:
+            result = self._provider.fetch_historical(part)
+            if result.source_version != self.source_version:
+                raise ValueError(
+                    "provider result source version does not match provider capability"
+                )
+            if result.adapter_semantic_version != self.adapter_semantic_version:
+                raise ValueError(
+                    "provider result adapter version does not match provider capability"
+                )
+            self._cache.store(result)
+        loaded = self._cache.load_range(
+            self.metadata.provider,
             request,
             expected_source_version=self.source_version,
             expected_adapter_semantic_version=self.adapter_semantic_version,
         )
         if loaded is None:
-            raise RuntimeError("cached market data could not be read after writing")
+            raise ValueError("provider returned incomplete historical coverage")
+        self._cache.store(loaded)
         return loaded
 
     def snapshot(self, symbol: str, timeframe: str, *, as_of: datetime) -> MarketSnapshot:

@@ -1,9 +1,9 @@
 {
   ".codex/hooks.json": {
-    "mtime": 1789246075.051852,
-    "seen": 1789246291.0405285,
-    "ast_hash": "8b76a540e9539a7b0ce404cff6bd25d9",
-    "semantic_hash": "8b76a540e9539a7b0ce404cff6bd25d9"
+    "mtime": 1789248650.1789773,
+    "seen": 1789248800.4650633,
+    "ast_hash": "5ebef3dd159986e465ab65e4014107ec",
+    "semantic_hash": ""
   },
   ".openai/hosting.json": {
     "mtime": 1789160988.3215115,
@@ -12,10 +12,10 @@
     "semantic_hash": "fc7d63af5194b362494e208f7bd53a1d"
   },
   "contracts/typescript/types.generated.ts": {
-    "mtime": 1789227608.4763086,
-    "seen": 1789245579.5751185,
-    "ast_hash": "48d5261c520113fa69258b126954fa40",
-    "semantic_hash": "48d5261c520113fa69258b126954fa40"
+    "mtime": 1789249308.8542626,
+    "seen": 1789249434.5733654,
+    "ast_hash": "f3aa0c7dd82cbbacca91f4ca0883d6cb",
+    "semantic_hash": ""
   },
   "integrations/freqtrade/request.example.json": {
     "mtime": 1789227608.4957006,
@@ -30,10 +30,10 @@
     "semantic_hash": "3906cbaa5e04e6bd9af4d4a2d4e113a7"
   },
   "pyproject.toml": {
-    "mtime": 1789245708.4170432,
-    "seen": 1789246291.0405285,
-    "ast_hash": "2b0bbfe15218e4538f8f519c7130f3cd",
-    "semantic_hash": "2b0bbfe15218e4538f8f519c7130f3cd"
+    "mtime": 1789249805.920297,
+    "seen": 1789249927.5572953,
+    "ast_hash": "9902223d17d73b0c2fac08862b750286",
+    "semantic_hash": ""
   },
   "src/botnet_council/__init__.py": {
     "mtime": 1789090862.918121,
@@ -54,10 +54,10 @@
     "semantic_hash": "f363dfa826dd7348bd6b350322266213"
   },
   "src/botnet_council/adapters/freqtrade.py": {
-    "mtime": 1789227608.4992175,
-    "seen": 1789245579.5751185,
-    "ast_hash": "a830762c5fa42a24a55ff29f6587e6fa",
-    "semantic_hash": "a830762c5fa42a24a55ff29f6587e6fa"
+    "mtime": 1789248828.9936793,
+    "seen": 1789249434.5733654,
+    "ast_hash": "2adb134f3f8216fab6f4cc049b74bf7b",
+    "semantic_hash": ""
   },
   "src/botnet_council/agents/__init__.py": {
     "mtime": 1789227608.5014465,
@@ -84,10 +84,10 @@
     "semantic_hash": "030bcdba8f582f4b2ce168501e4ace9b"
   },
   "src/botnet_council/agents/historical_recurrence.py": {
-    "mtime": 1789227608.502609,
-    "seen": 1789245579.5751185,
-    "ast_hash": "90fc9a634399127f96d9dc6ceab3da62",
-    "semantic_hash": "90fc9a634399127f96d9dc6ceab3da62"
+    "mtime": 1789248833.2497694,
+    "seen": 1789249434.5733654,
+    "ast_hash": "f7a7f5ecd961c56b39874cb7c5de1130",
+    "semantic_hash": ""
   },
   "src/botnet_council/agents/mean_reversion.py": {
     "mtime": 1789227608.502609,
@@ -102,10 +102,10 @@
     "semantic_hash": "37eeba7e6db0d2f81cb9fe9944c33711"
   },
   "src/botnet_council/agents/seasonality.py": {
-    "mtime": 1789227608.5095677,
-    "seen": 1789245579.5751185,
-    "ast_hash": "1e1fbb3399e7934d29d4d4099a36a770",
-    "semantic_hash": "1e1fbb3399e7934d29d4d4099a36a770"
+    "mtime": 1789248837.5898945,
+    "seen": 1789249434.5733654,
+    "ast_hash": "ffe2a84a0040b31d368ad0a14a1142e9",
+    "semantic_hash": ""
   },
   "src/botnet_council/agents/trend.py": {
     "mtime": 1789227608.5139325,
@@ -132,28 +132,28 @@
     "semantic_hash": "58f5855e087949ce66b9be1103ce1b00"
   },
   "src/botnet_council/api/app.py": {
-    "mtime": 1789227608.515684,
-    "seen": 1789245579.5751185,
-    "ast_hash": "9346ec414cddbded16cf99a5e052202b",
-    "semantic_hash": "9346ec414cddbded16cf99a5e052202b"
+    "mtime": 1789249225.0577433,
+    "seen": 1789249434.5733654,
+    "ast_hash": "438d06fe4c31107311712c86c4634e32",
+    "semantic_hash": ""
   },
   "src/botnet_council/backtest/__init__.py": {
-    "mtime": 1789227608.515684,
-    "seen": 1789245579.5751185,
-    "ast_hash": "732cf78ae55ed42ba4151e078b6bac27",
-    "semantic_hash": "732cf78ae55ed42ba4151e078b6bac27"
+    "mtime": 1789248670.1589396,
+    "seen": 1789248800.4651237,
+    "ast_hash": "3465181ae8fcaed8bbbf582f52334e5c",
+    "semantic_hash": ""
   },
   "src/botnet_council/backtest/authoritative.py": {
-    "mtime": 1789227608.515684,
-    "seen": 1789245579.5751185,
-    "ast_hash": "e65efe4bd5e1afbc8cb2ea9c94b2aa35",
-    "semantic_hash": "e65efe4bd5e1afbc8cb2ea9c94b2aa35"
+    "mtime": 1789248841.8468826,
+    "seen": 1789249434.5733654,
+    "ast_hash": "28c604bc205928d6f5fb0d016b9dc889",
+    "semantic_hash": ""
   },
   "src/botnet_council/backtest/engine.py": {
-    "mtime": 1789227608.515684,
-    "seen": 1789245579.5751185,
-    "ast_hash": "da2bab477222efd57a7ebe548a611dff",
-    "semantic_hash": "da2bab477222efd57a7ebe548a611dff"
+    "mtime": 1789248560.8061855,
+    "seen": 1789248800.4651265,
+    "ast_hash": "04543944faa06c3171b6fe52ab1931b3",
+    "semantic_hash": ""
   },
   "src/botnet_council/backtest/episode.py": {
     "mtime": 1789227608.5238037,
@@ -162,10 +162,10 @@
     "semantic_hash": "61a14d1ff1a4ea976907794a9adce54f"
   },
   "src/botnet_council/backtest/freqtrade.py": {
-    "mtime": 1789227608.5253115,
-    "seen": 1789245579.5751185,
-    "ast_hash": "9a0b6ce2f2ccab6414091bd342773dfa",
-    "semantic_hash": "9a0b6ce2f2ccab6414091bd342773dfa"
+    "mtime": 1789248968.8670485,
+    "seen": 1789249434.5733654,
+    "ast_hash": "3591a260c9f28f94b4e40bacdd6123d5",
+    "semantic_hash": ""
   },
   "src/botnet_council/backtest/metrics.py": {
     "mtime": 1789099300.700452,
@@ -174,10 +174,10 @@
     "semantic_hash": "154b4ccbe9e9384328484eb89493aa09"
   },
   "src/botnet_council/backtest/models.py": {
-    "mtime": 1789227608.5253115,
-    "seen": 1789245579.5751185,
-    "ast_hash": "f55bca69512f641d2db9965c35b90efd",
-    "semantic_hash": "f55bca69512f641d2db9965c35b90efd"
+    "mtime": 1789248560.804673,
+    "seen": 1789248800.4651322,
+    "ast_hash": "04f3e665d8f3c603952908a64390c2cc",
+    "semantic_hash": ""
   },
   "src/botnet_council/backtest/persistence.py": {
     "mtime": 1789099896.730249,
@@ -186,10 +186,10 @@
     "semantic_hash": "98ade14a441cf8efa840fb3245ba5462"
   },
   "src/botnet_council/cli.py": {
-    "mtime": 1789227608.5253115,
-    "seen": 1789245579.5751185,
-    "ast_hash": "d204af2d6bd7eb0177b32b06969473c8",
-    "semantic_hash": "d204af2d6bd7eb0177b32b06969473c8"
+    "mtime": 1789248850.4863815,
+    "seen": 1789249434.5733654,
+    "ast_hash": "c78e6070c53162acebf57e13e0a740f2",
+    "semantic_hash": ""
   },
   "src/botnet_council/config.py": {
     "mtime": 1789093502.479892,
@@ -204,16 +204,16 @@
     "semantic_hash": "653699423f30dd3c8b975b3d54d30f1b"
   },
   "src/botnet_council/context/dispatch.py": {
-    "mtime": 1789227608.5318677,
-    "seen": 1789245579.5751185,
-    "ast_hash": "d509193218bf89b706ff8056f8f2b0b0",
-    "semantic_hash": "d509193218bf89b706ff8056f8f2b0b0"
+    "mtime": 1789248854.8779008,
+    "seen": 1789249434.5733654,
+    "ast_hash": "f34b8ed591492b5316f68437049bb2bd",
+    "semantic_hash": ""
   },
   "src/botnet_council/context/models.py": {
-    "mtime": 1789227608.5318677,
-    "seen": 1789245579.5751185,
-    "ast_hash": "07972dec3bf218dd4415bef7a8cb0c29",
-    "semantic_hash": "07972dec3bf218dd4415bef7a8cb0c29"
+    "mtime": 1789248859.3965456,
+    "seen": 1789249434.5733654,
+    "ast_hash": "404a77aa23e7756f924de9ae0d0ccb58",
+    "semantic_hash": ""
   },
   "src/botnet_council/context/providers.py": {
     "mtime": 1789227608.5338092,
@@ -222,10 +222,10 @@
     "semantic_hash": "7f97ed0d999746a627eaa317d9ee0e0d"
   },
   "src/botnet_council/context/service.py": {
-    "mtime": 1789227608.5338092,
-    "seen": 1789245579.5751185,
-    "ast_hash": "b4f4f5681e3064414bac6ed107fe7dae",
-    "semantic_hash": "b4f4f5681e3064414bac6ed107fe7dae"
+    "mtime": 1789248864.190525,
+    "seen": 1789249434.5733654,
+    "ast_hash": "6edfddb549094a69488baeb5281122db",
+    "semantic_hash": ""
   },
   "src/botnet_council/council/__init__.py": {
     "mtime": 1789090862.9413805,
@@ -264,16 +264,16 @@
     "semantic_hash": "4d403615dcfec861bab6446e5720ecd5"
   },
   "src/botnet_council/experience/models.py": {
-    "mtime": 1789227608.5358179,
-    "seen": 1789245579.5751185,
-    "ast_hash": "9d56f5b5588111a7e9a1880be181ebf7",
-    "semantic_hash": "9d56f5b5588111a7e9a1880be181ebf7"
+    "mtime": 1789248868.7511277,
+    "seen": 1789249434.5733654,
+    "ast_hash": "66f80ca20ef063a2f4b3cbedab463a61",
+    "semantic_hash": ""
   },
   "src/botnet_council/experience/store.py": {
-    "mtime": 1789227608.5358179,
-    "seen": 1789245579.5751185,
-    "ast_hash": "603b974b523835213be53c8e02cf3731",
-    "semantic_hash": "603b974b523835213be53c8e02cf3731"
+    "mtime": 1789248873.216441,
+    "seen": 1789249434.5733654,
+    "ast_hash": "00f3928377cb2076ca0a1cd5fb0e5a6a",
+    "semantic_hash": ""
   },
   "src/botnet_council/experiments/__init__.py": {
     "mtime": 1789227608.5398922,
@@ -282,10 +282,10 @@
     "semantic_hash": "7838b20385aa865a79ba0bd009d3cd58"
   },
   "src/botnet_council/experiments/batch.py": {
-    "mtime": 1789227608.5418856,
-    "seen": 1789245579.5751185,
-    "ast_hash": "16e8c7efb7685bb5052ee173c82193bb",
-    "semantic_hash": "16e8c7efb7685bb5052ee173c82193bb"
+    "mtime": 1789248877.5677986,
+    "seen": 1789249434.5733654,
+    "ast_hash": "3a01e251b82007449c4c698cc8119fd9",
+    "semantic_hash": ""
   },
   "src/botnet_council/experiments/context.py": {
     "mtime": 1789227608.5438936,
@@ -348,22 +348,22 @@
     "semantic_hash": "24d44eb75c707f4b312f8eb455c07f47"
   },
   "src/botnet_council/learning/models.py": {
-    "mtime": 1789227608.5512137,
-    "seen": 1789245579.5751185,
-    "ast_hash": "a8e7e0c43241cacdf7225dd85c627b9a",
-    "semantic_hash": "a8e7e0c43241cacdf7225dd85c627b9a"
+    "mtime": 1789248881.9148824,
+    "seen": 1789249434.5733654,
+    "ast_hash": "368223b40b7138ab2030b218e3c4c042",
+    "semantic_hash": ""
   },
   "src/botnet_council/learning/profiles.py": {
-    "mtime": 1789227608.5512137,
-    "seen": 1789245579.5751185,
-    "ast_hash": "34e9f6764874130ddb2db3aed4f63a4e",
-    "semantic_hash": "34e9f6764874130ddb2db3aed4f63a4e"
+    "mtime": 1789248887.041504,
+    "seen": 1789249434.5733654,
+    "ast_hash": "46448083d0a2b6aa85aa58cf47603300",
+    "semantic_hash": ""
   },
   "src/botnet_council/learning/teacher.py": {
-    "mtime": 1789227608.5560932,
-    "seen": 1789245579.5751185,
-    "ast_hash": "5ae1faf8c92685779ec84b55f2c8c2f4",
-    "semantic_hash": "5ae1faf8c92685779ec84b55f2c8c2f4"
+    "mtime": 1789248891.427002,
+    "seen": 1789249434.5733654,
+    "ast_hash": "2ddbc6b85534e83ce2b10991df33f9ec",
+    "semantic_hash": ""
   },
   "src/botnet_council/learning/trials.py": {
     "mtime": 1789227608.5560932,
@@ -378,28 +378,28 @@
     "semantic_hash": "76cb5ff54900fa30e406931b09e8a5c1"
   },
   "src/botnet_council/market_data/__init__.py": {
-    "mtime": 1789227608.5591958,
-    "seen": 1789245579.5751185,
-    "ast_hash": "37f177eb86fa033ebf549fa3790fda83",
-    "semantic_hash": "37f177eb86fa033ebf549fa3790fda83"
+    "mtime": 1789248560.797566,
+    "seen": 1789248800.4651935,
+    "ast_hash": "06215a17030716f6629a9b68da332c38",
+    "semantic_hash": ""
   },
   "src/botnet_council/market_data/base.py": {
-    "mtime": 1789099299.8591216,
-    "seen": 1789245579.5751185,
-    "ast_hash": "7f953aba37e912dc894b9c089b28f372",
-    "semantic_hash": "7f953aba37e912dc894b9c089b28f372"
+    "mtime": 1789248560.797566,
+    "seen": 1789248800.4651945,
+    "ast_hash": "0f9ece5c2f774ad6990006734de091c7",
+    "semantic_hash": ""
   },
   "src/botnet_council/market_data/cache.py": {
-    "mtime": 1789099896.7282443,
-    "seen": 1789245579.5751185,
-    "ast_hash": "b42718b7aec33a51da327159c27a300a",
-    "semantic_hash": "b42718b7aec33a51da327159c27a300a"
+    "mtime": 1789249808.8760314,
+    "seen": 1789249927.5572953,
+    "ast_hash": "25c38cce0d6fd4caf0c2367ffe1069d2",
+    "semantic_hash": ""
   },
   "src/botnet_council/market_data/cached.py": {
-    "mtime": 1789099299.862208,
-    "seen": 1789245579.5751185,
-    "ast_hash": "87610d6b21d5c75aa8ddf43fc81e9a23",
-    "semantic_hash": "87610d6b21d5c75aa8ddf43fc81e9a23"
+    "mtime": 1789248560.797566,
+    "seen": 1789248800.4651973,
+    "ast_hash": "cb0e0e2b38f02e8d204ec1095506e757",
+    "semantic_hash": ""
   },
   "src/botnet_council/market_data/in_memory.py": {
     "mtime": 1789227608.5621252,
@@ -414,10 +414,10 @@
     "semantic_hash": "1fa0d0d39d9bcc96418212d4fd93541d"
   },
   "src/botnet_council/market_data/models.py": {
-    "mtime": 1789099896.730249,
-    "seen": 1789245579.5751185,
-    "ast_hash": "1010032131785de0fde35b60ac5d8693",
-    "semantic_hash": "1010032131785de0fde35b60ac5d8693"
+    "mtime": 1789248560.8081968,
+    "seen": 1789248800.4652035,
+    "ast_hash": "1f12c43416936d88e99476cbcdd82485",
+    "semantic_hash": ""
   },
   "src/botnet_council/market_data/quality.py": {
     "mtime": 1789099299.8666334,
@@ -426,10 +426,10 @@
     "semantic_hash": "0bb9ab138154420ace24a1728e33ce41"
   },
   "src/botnet_council/pipeline.py": {
-    "mtime": 1789227608.5641365,
-    "seen": 1789245579.5751185,
-    "ast_hash": "880e6d60b220d5b64ae4af3f8abf11b4",
-    "semantic_hash": "880e6d60b220d5b64ae4af3f8abf11b4"
+    "mtime": 1789248895.8402307,
+    "seen": 1789249434.5733654,
+    "ast_hash": "39c65d6f8ddeae0cd4bf5565d41422a4",
+    "semantic_hash": ""
   },
   "src/botnet_council/risk/__init__.py": {
     "mtime": 1789090862.918121,
@@ -456,10 +456,10 @@
     "semantic_hash": "fb353949c9a7732d49284e90567a21bf"
   },
   "src/botnet_council/telemetry/contracts.py": {
-    "mtime": 1789227608.5641365,
-    "seen": 1789245579.5751185,
-    "ast_hash": "d804f992441f115cc843e9b98c1dcb2d",
-    "semantic_hash": "d804f992441f115cc843e9b98c1dcb2d"
+    "mtime": 1789249305.8135254,
+    "seen": 1789249434.5733654,
+    "ast_hash": "c94f95139cd44c7ee39db0ce6dea1e66",
+    "semantic_hash": ""
   },
   "src/botnet_council/telemetry/events.py": {
     "mtime": 1789160988.3447,
@@ -468,10 +468,10 @@
     "semantic_hash": "5f1128e0e0127fd888f272d64d41a26e"
   },
   "src/botnet_council/telemetry/publisher.py": {
-    "mtime": 1789162052.6275175,
-    "seen": 1789245579.5751185,
-    "ast_hash": "b840d802ff646f55cd8707e9525da5c2",
-    "semantic_hash": "b840d802ff646f55cd8707e9525da5c2"
+    "mtime": 1789248900.3127701,
+    "seen": 1789249434.5733654,
+    "ast_hash": "81c524a505cf3001c80be562fc79550a",
+    "semantic_hash": ""
   },
   "src/botnet_council/telemetry/sanitize.py": {
     "mtime": 1789160988.3457148,
@@ -480,10 +480,10 @@
     "semantic_hash": "7831ceca62c8c63326c955ab3849c276"
   },
   "src/botnet_council/telemetry/serializers.py": {
-    "mtime": 1789227608.566691,
-    "seen": 1789245579.5751185,
-    "ast_hash": "48826c4fd5635f29f9c0b24d311a8edf",
-    "semantic_hash": "48826c4fd5635f29f9c0b24d311a8edf"
+    "mtime": 1789248904.813328,
+    "seen": 1789249434.5733654,
+    "ast_hash": "64a1d1356bc59bed49b10e036c7c9749",
+    "semantic_hash": ""
   },
   "tests/conftest.py": {
     "mtime": 1789099299.8666334,
@@ -498,10 +498,10 @@
     "semantic_hash": "29d267dd1ddd0aa9b996d6417603aff9"
   },
   "tests/test_api.py": {
-    "mtime": 1789227608.566691,
-    "seen": 1789245579.5751185,
-    "ast_hash": "1e38f316453cd4745bb1b09c93236ed8",
-    "semantic_hash": "1e38f316453cd4745bb1b09c93236ed8"
+    "mtime": 1789249227.790215,
+    "seen": 1789249434.5733654,
+    "ast_hash": "c84f09197d1a0a30095cccc8523e38df",
+    "semantic_hash": ""
   },
   "tests/test_backtest.py": {
     "mtime": 1789162067.0362146,
@@ -702,10 +702,10 @@
     "semantic_hash": "d2b6d0111e1850ce2d8b013b9469d60b"
   },
   "web/src/validate.ts": {
-    "mtime": 1789227608.604137,
-    "seen": 1789245579.5751185,
-    "ast_hash": "f31b8adf79712f20806185ce3a920219",
-    "semantic_hash": "f31b8adf79712f20806185ce3a920219"
+    "mtime": 1789249226.4251225,
+    "seen": 1789249434.5733654,
+    "ast_hash": "271e03c125226024ceb6b844d8133dfb",
+    "semantic_hash": ""
   },
   "web/tsconfig.json": {
     "mtime": 1789160988.3849273,
@@ -720,56 +720,56 @@
     "semantic_hash": "f306b69b2d44ce9b76ea335f21dcc892"
   },
   ".codex/skills/graphify/SKILL.md": {
-    "mtime": 1789245568.503961,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248650.1789773,
+    "seen": 1789248800.4652839,
     "ast_hash": "212b55d95333d84e14262f8ec83faa2b",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/add-watch.md": {
-    "mtime": 1789238750.8467486,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0645611,
+    "seen": 1789248800.465285,
     "ast_hash": "d59d027fe449f06aa03905a01184e779",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/exports.md": {
-    "mtime": 1789238750.8467486,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0685844,
+    "seen": 1789248800.4652865,
     "ast_hash": "9da2a2152e60a22f07f05fed5158f287",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/extraction-spec.md": {
-    "mtime": 1789238750.8467486,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0746179,
+    "seen": 1789248800.465288,
     "ast_hash": "bf895ec4d4e40f5f66f7d31c2a9bd4a7",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/github-and-merge.md": {
-    "mtime": 1789238750.8540483,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0824041,
+    "seen": 1789248800.465289,
     "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/hooks.md": {
-    "mtime": 1789238750.8540483,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0824041,
+    "seen": 1789248800.4652905,
     "ast_hash": "3f545db6ce646650bb9de588f5512a27",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/query.md": {
-    "mtime": 1789238750.8540483,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0844147,
+    "seen": 1789248800.4652917,
     "ast_hash": "3c46f8ad006874260614ed8657d02307",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/transcribe.md": {
-    "mtime": 1789238750.8566022,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0844147,
+    "seen": 1789248800.4652932,
     "ast_hash": "67b6a5fa6c0974e18f60db9f8932fbd8",
     "semantic_hash": ""
   },
   ".codex/skills/graphify/references/update.md": {
-    "mtime": 1789238750.8566022,
-    "seen": 1789246480.4392064,
+    "mtime": 1789248589.0844147,
+    "seen": 1789248800.4652941,
     "ast_hash": "9378bd03d56baaf78bd738ab3848f142",
     "semantic_hash": ""
   },
@@ -798,9 +798,9 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1789227608.4716806,
-    "seen": 1789246480.4392064,
-    "ast_hash": "66c8b3ceae1c582d1acd7285d0a4adea",
+    "mtime": 1789249016.714353,
+    "seen": 1789249434.5733654,
+    "ast_hash": "815a7016048badd600e02978042dcedf",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
@@ -903,6 +903,36 @@
     "mtime": 1789160988.3641956,
     "seen": 1789246480.4392064,
     "ast_hash": "06a54e4a6922cd3ce23336eff6eae2b1",
+    "semantic_hash": ""
+  },
+  "src/botnet_council/market_data/freqtrade.py": {
+    "mtime": 1789249810.292943,
+    "seen": 1789249927.5572953,
+    "ast_hash": "f39a2f5c191043b5d2a75d505848cafc",
+    "semantic_hash": ""
+  },
+  "src/botnet_council/scenarios.py": {
+    "mtime": 1789249811.717187,
+    "seen": 1789249927.5572953,
+    "ast_hash": "518ef177b1904d4b5ad0ee7d01c3bcf3",
+    "semantic_hash": ""
+  },
+  "tests/test_issue17_historical_pipeline.py": {
+    "mtime": 1789249857.2443924,
+    "seen": 1789249927.5572953,
+    "ast_hash": "5f9c8d475c3d8f272453bdd014b8a148",
+    "semantic_hash": ""
+  },
+  "docs/historical-scenarios.md": {
+    "mtime": 1789249018.1166587,
+    "seen": 1789249434.5733654,
+    "ast_hash": "2c1fbd12aec8426e6dd8f9f0090c6336",
+    "semantic_hash": ""
+  },
+  "graphify-out/memory/query_20260912_214414_357bb5f6_how_does_the_current_market_data_pipeline_ingest.md": {
+    "mtime": 1789249454.7327213,
+    "seen": 1789249927.5572953,
+    "ast_hash": "65970a79f1078d264faaa9ed10745310",
     "semantic_hash": ""
   }
 }
