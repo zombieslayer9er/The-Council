@@ -1,5 +1,5 @@
-import type { BootstrapResponse, HealthResponse, RunDetailResponse, TelemetryEvent } from '../../contracts/typescript/types.generated';
-import { ContractError, parseBootstrap, parseHealth, parseRunDetail, parseTelemetryEvent } from './validate';
+import type { BootstrapResponse, ExperiencePage, ExperienceResponse, ExperimentEvaluationResponse, ExperimentForecastResponse, ExperimentOracleResponse, ExperimentPage, HealthResponse, LearningReviewPage, RunDetailResponse, TelemetryEvent, WeightGenerationPage } from '../../contracts/typescript/types.generated';
+import { ContractError, parseBootstrap, parseExperiencePage, parseExperienceResponse, parseExperimentEvaluationResponse, parseExperimentForecastResponse, parseExperimentOracleResponse, parseExperimentPage, parseHealth, parseLearningReviewPage, parseRunDetail, parseTelemetryEvent, parseWeightGenerationPage } from './validate';
 
 export interface BootstrapData { health: HealthResponse; bootstrap: BootstrapResponse }
 export interface StreamCallbacks {
@@ -7,6 +7,12 @@ export interface StreamCallbacks {
   onOpen: () => void;
   onDisconnect: () => void;
   onMalformed: (message: string) => void;
+}
+export interface ResearchData {
+  experiments: ExperimentPage;
+  experiences: ExperiencePage | null;
+  weights: WeightGenerationPage | null;
+  reviews: LearningReviewPage | null;
 }
 
 export class ApiProblem extends Error {
@@ -30,6 +36,29 @@ export async function bootstrap(signal?: AbortSignal): Promise<BootstrapData> {
 
 export async function loadRun(runId: string, signal?: AbortSignal): Promise<RunDetailResponse> {
   return parseRunDetail(await getUnknown(`/api/runs/${encodeURIComponent(runId)}`, signal));
+}
+
+export async function loadResearch(capabilities: readonly string[], signal?: AbortSignal): Promise<ResearchData> {
+  const [experiments, experiences, weights, reviews] = await Promise.all([
+    getUnknown('/api/experiments?limit=500', signal).then(parseExperimentPage),
+    capabilities.includes('experience_read') ? getUnknown('/api/experiences?limit=500', signal).then(parseExperiencePage) : null,
+    capabilities.includes('learning_read') ? getUnknown('/api/weight-generations', signal).then(parseWeightGenerationPage) : null,
+    capabilities.includes('learning_read') ? getUnknown('/api/learning-reviews', signal).then(parseLearningReviewPage) : null,
+  ]);
+  return { experiments, experiences, weights, reviews };
+}
+
+export async function loadExperience(episodeId: string, signal?: AbortSignal): Promise<ExperienceResponse> {
+  return parseExperienceResponse(await getUnknown(`/api/experiences/${encodeURIComponent(episodeId)}`, signal));
+}
+
+export async function loadExperimentEvidence(experimentId: string, availability: { forecast: boolean; oracle: boolean; evaluation: boolean }, signal?: AbortSignal) {
+  const [forecast, oracle, evaluation] = await Promise.all([
+    availability.forecast ? getUnknown(`/api/experiments/${encodeURIComponent(experimentId)}/forecast`, signal).then(parseExperimentForecastResponse) : null,
+    availability.oracle ? getUnknown(`/api/experiments/${encodeURIComponent(experimentId)}/oracle`, signal).then(parseExperimentOracleResponse) : null,
+    availability.evaluation ? getUnknown(`/api/experiments/${encodeURIComponent(experimentId)}/evaluation`, signal).then(parseExperimentEvaluationResponse) : null,
+  ]);
+  return { forecast: forecast as ExperimentForecastResponse | null, oracle: oracle as ExperimentOracleResponse | null, evaluation: evaluation as ExperimentEvaluationResponse | null };
 }
 
 export function openEventStream(callbacks: StreamCallbacks): () => void {

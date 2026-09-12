@@ -37,7 +37,14 @@ class BacktestModel(BaseModel):
 
 
 class AgentConfig(BacktestModel):
-    kind: Literal["trend", "mean_reversion", "volatility", "regime", "seasonality"]
+    kind: Literal[
+        "trend",
+        "mean_reversion",
+        "volatility",
+        "regime",
+        "seasonality",
+        "historical_recurrence",
+    ]
     parameters: Mapping[str, int | float] = Field(default_factory=dict)
 
     @field_validator("parameters")

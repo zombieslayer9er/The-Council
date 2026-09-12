@@ -1,6 +1,8 @@
 from dataclasses import dataclass
+from typing import ClassVar
 
 from botnet_council.agents._math import clamp, direction_for, mean, timeframe_delta
+from botnet_council.context.models import ContextCapability
 from botnet_council.schemas import (
     ActionIntent,
     AgentContext,
@@ -13,6 +15,12 @@ from botnet_council.schemas import (
 
 @dataclass(frozen=True, slots=True)
 class TrendAgent:
+    required_context_capabilities: ClassVar[frozenset[ContextCapability]] = frozenset(
+        {ContextCapability.PRICE_HISTORY}
+    )
+    optional_context_capabilities: ClassVar[frozenset[ContextCapability]] = frozenset(
+        {ContextCapability.BENCHMARK_PERFORMANCE, ContextCapability.RELATIVE_STRENGTH}
+    )
     agent_id: str = "trend"
     agent_version: str = "1.0"
     signal_type: SignalType = SignalType.ALPHA

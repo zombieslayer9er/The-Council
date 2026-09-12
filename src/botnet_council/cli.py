@@ -13,7 +13,16 @@ from botnet_council.agents import (
     TrendAgent,
     VolatilityAgent,
 )
-from botnet_council.backtest import AgentConfig, BacktestConfig, BacktestEngine, persist_backtest
+from botnet_council.backtest import (
+    AgentConfig,
+    AuthoritativeBacktestRequest,
+    BacktestConfig,
+    BacktestEngine,
+    DockerComposeCommandRunner,
+    FreqtradeBacktestEngine,
+    ValidationKind,
+    persist_backtest,
+)
 from botnet_council.config import load_config
 from botnet_council.council import DeterministicCouncil
 from botnet_council.execution import PaperExecutionAdapter
@@ -183,6 +192,26 @@ def run_backtest(args: argparse.Namespace) -> None:
     print("profitability is not evidence of strategy quality")
 
 
+def run_freqtrade(args: argparse.Namespace) -> None:
+    request_path = Path(cast(str, args.request))
+    request = AuthoritativeBacktestRequest.model_validate_json(
+        request_path.read_text(encoding="utf-8")
+    )
+    runner = None
+    if args.docker_compose is not None:
+        runner = DockerComposeCommandRunner(
+            cast(str, args.docker_compose), cast(str, args.workspace_root)
+        )
+    engine = FreqtradeBacktestEngine(
+        executable=cast(str, args.executable), runner=runner
+    )
+    if args.validation is None:
+        print(engine.run(request).model_dump_json(indent=2))
+    else:
+        kind = ValidationKind(cast(str, args.validation))
+        print(engine.validate(request, kind).model_dump_json(indent=2))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="botnet-council")
     subparsers = parser.add_subparsers(dest="command")
@@ -208,11 +237,31 @@ def main() -> None:
     backtest.add_argument("--fee-bps", default=1.0, type=float)
     backtest.add_argument("--slippage-bps", default=2.0, type=float)
     backtest.add_argument("--output", default="backtest-results")
+    freqtrade = subparsers.add_parser(
+        "freqtrade-backtest",
+        help="run an authoritative Freqtrade backtest from a strict JSON request",
+    )
+    freqtrade.add_argument("--request", required=True, help="path to the request JSON")
+    freqtrade.add_argument("--executable", default="freqtrade")
+    freqtrade.add_argument(
+        "--docker-compose",
+        help="run Freqtrade through the isolated Compose service",
+    )
+    freqtrade.add_argument(
+        "--workspace-root",
+        default=".",
+        help="host workspace mounted read-write at /workspace in Docker",
+    )
+    freqtrade.add_argument(
+        "--validation", choices=tuple(item.value for item in ValidationKind)
+    )
     args = parser.parse_args()
     if args.command == "download-market-data":
         download_market_data(args)
     elif args.command == "backtest":
         run_backtest(args)
+    elif args.command == "freqtrade-backtest":
+        run_freqtrade(args)
     else:
         run_demo()
 

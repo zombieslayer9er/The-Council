@@ -1,5 +1,9 @@
 # Deterministic historical backtesting
 
+This document describes the deterministic internal simulator used for unit tests and
+failure injection. Authoritative research backtests use the external Freqtrade boundary
+described in [backend-data-pipeline.md](backend-data-pipeline.md).
+
 The V0.1 backtester replays one instrument and timeframe through the existing agents,
 council, risk governor, paper execution adapter, and reconciliation gate. It is a
 research-correctness tool, not a strategy optimizer.

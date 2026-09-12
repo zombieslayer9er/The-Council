@@ -4,6 +4,10 @@ A deliberately small Python scaffold for modular market research and **paper-onl
 execution. The core protocol is independent of model providers, agent frameworks,
 exchanges, and Freqtrade.
 
+Blind historical forecast experiments are available through `botnet_council.experiments`
+and the local API. See [`docs/experiments.md`](docs/experiments.md) for the information
+barrier, lifecycle, price convention, seeded sampling, persistence, and endpoints.
+
 > This repository is engineering scaffolding, not investment advice. It contains no
 > live-trading mode, exchange client, credential schema, or promise of profitability.
 
@@ -44,7 +48,8 @@ boundary contracts.
 - A common `SpecialistAgent` protocol and versioned, snapshot-bound `AgentSignal` schema.
 - Typed historical OHLCV requests, explicit candle availability, a read-only Kraken
   Spot adapter, quality/gap reports, and a provenance-preserving Parquet cache.
-- Simple deterministic Trend, Mean Reversion, Seasonality, Volatility, and Regime specialists.
+- Deterministic Trend, Mean Reversion, Seasonality, Historical Recurrence, Volatility, and
+  Regime specialists.
 - An order-independent weighted council. Only alpha signals vote directionally;
   volatility and regime signals remain attached as risk/research evidence.
 - Timestamped mark-to-market accounting with separate average entry and current mark,
@@ -55,6 +60,12 @@ boundary contracts.
   not trap exposure that a trade would strictly reduce.
 - An atomic in-memory simulator with bounded fees/slippage and causal next-bar-open fills.
 - A pure Freqtrade DTO translator restricted to `dry_run` and `backtest` modes.
+- A pinned, disposable Freqtrade Docker runtime for authoritative spot backtests, with
+  immutable Council signal artifacts, path isolation, and recorded engine provenance.
+- Content-addressed experience storage and deterministic temporal replay, plus conservative
+  Librarian/Teacher weight proposals evaluated only against held-out episodes.
+- Structurally blind historical experiments that freeze forecasts before a separate oracle
+  evaluates future outcomes, including seeded batches and strict lifecycle enforcement.
 - Typed TOML configuration, structured JSON logging, tests, and extension guides.
 - A deterministic, event-driven single-instrument historical backtester with Kraken
   input, strict coverage checks, causal next-open fills, JSON summaries, and Parquet ledgers.
@@ -80,6 +91,20 @@ The demo uses generated bars and an in-memory paper account. Configuration lives
 [`config/default.toml`](config/default.toml). No `.env` or credential fields are
 needed or supported.
 
+### Optional Freqtrade runtime
+
+After installing Docker Desktop with its WSL 2 backend, prepare the pinned external
+backtest runtime from PowerShell:
+
+```powershell
+.\tools\setup-freqtrade-docker.ps1
+```
+
+This only verifies Docker, pulls the pinned image, and runs a disposable version probe.
+Historical data download and backtest commands are documented in
+[`docs/freqtrade-docker.md`](docs/freqtrade-docker.md); no live-trading mode or exchange
+credentials are supported.
+
 ### Telemetry dashboard
 
 Run the API and web console in separate terminals:
@@ -93,7 +118,11 @@ pnpm dev
 
 Open `http://127.0.0.1:5173`. Vite proxies the versioned REST API and read-only
 WebSocket stream to `127.0.0.1:8000`. The dashboard never submits orders or mutates
-domain state; it renders only telemetry emitted by the API process.
+domain state; it renders only telemetry and immutable research evidence emitted by the API
+process. Evidence, Historical Recurrence analogues, weight-generation comparisons, blind
+experiment outcomes, and frozen experience replay are described in
+[`docs/dashboard.md`](docs/dashboard.md). Set `BOTNET_COUNCIL_EXPERIENCE_STORE` and
+`BOTNET_COUNCIL_WEIGHT_STORE` on the API process to expose the optional read-only stores.
 
 ## Extension points
 
@@ -110,6 +139,13 @@ Kraken timestamp and cache semantics are documented in
 [`docs/market-data.md`](docs/market-data.md).
 The fixed-hypothesis calendar matcher and its causal restrictions are documented in
 [`docs/seasonality.md`](docs/seasonality.md).
+The separate full-history annual evidence model is documented in
+[`docs/historical-recurrence.md`](docs/historical-recurrence.md).
+Immutable replay and conservative weight learning are documented in
+[`docs/experience-cache.md`](docs/experience-cache.md) and
+[`docs/learning-loop.md`](docs/learning-loop.md).
+The isolated authoritative Freqtrade runtime is documented in
+[`docs/freqtrade-docker.md`](docs/freqtrade-docker.md).
 
 ## Repository map
 
@@ -121,6 +157,10 @@ src/botnet_council/
   risk/                         deterministic veto and sizing
   execution/                    paper-only execution contract and simulator
   market_data/                  read-only market data contract
+  backtest/                     internal and authoritative backtest engines
+  experience/                   immutable episode storage and temporal replay
+  learning/                     held-out Librarian and Teacher evaluation
+  experiments/                  blind forecast/oracle lifecycle and batches
   adapters/                     external-framework translation boundaries
   telemetry/                    public event contracts, serializers, store, and publisher
   api/                          optional read-only FastAPI and WebSocket boundary
@@ -128,6 +168,8 @@ src/botnet_council/
   pipeline.py                   composition root
 tests/                          unit and boundary tests
 docs/                           architecture and extension notes
+integrations/freqtrade/         pinned Compose runtime and standalone strategy
+tools/                          contract generation and local setup helpers
 web/                            React telemetry console
 ```
 
