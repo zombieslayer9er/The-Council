@@ -10,16 +10,9 @@ from hashlib import sha256
 from math import isclose
 from typing import Any, cast
 
-from botnet_council.agents import (
-    MeanReversionAgent,
-    RegimeClassificationAgent,
-    SeasonalityAgent,
-    SpecialistAgent,
-    TrendAgent,
-    VolatilityAgent,
-    warmup_bars,
-)
+from botnet_council.agents import SpecialistAgent, warmup_bars
 from botnet_council.agents._math import timeframe_delta
+from botnet_council.agents.factory import build_agents
 from botnet_council.backtest.metrics import maximum_drawdown
 from botnet_council.backtest.models import (
     BacktestConfig,
@@ -573,14 +566,7 @@ class BacktestEngine:
 
 
 def _build_agents(config: BacktestConfig) -> tuple[SpecialistAgent, ...]:
-    constructors: dict[str, Any] = {
-        "trend": TrendAgent,
-        "mean_reversion": MeanReversionAgent,
-        "volatility": VolatilityAgent,
-        "regime": RegimeClassificationAgent,
-        "seasonality": SeasonalityAgent,
-    }
-    return tuple(constructors[item.kind](**dict(item.parameters)) for item in config.agents)
+    return build_agents(config.agents)
 
 
 def _replay_provider(

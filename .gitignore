@@ -15,5 +15,6 @@ htmlcov/
 paper_state/
 .market-data-cache/
 backtest-results/
+experiment-results/
 node_modules/
 .pnpm-store/

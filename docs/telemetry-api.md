@@ -1,5 +1,16 @@
 # Telemetry and read-only API
 
+Blind experiment commands share the local FastAPI host but are outside the telemetry stream.
+Commands live under `/api/control/`; read-only projections live under `/api/experiments`. See
+[experiments.md](experiments.md). The API never projects `ExperimentContext` and gates oracle
+observations until the forecast has been locked.
+
+Experiment control is disabled by default. Set a strong `BOTNET_COUNCIL_CONTROL_TOKEN` and send
+it as a bearer credential to enable command routes. Supplied browser Origins are restricted to
+the localhost allowlist. `/api/health` reports `read_only`, `capabilities`, and
+`command_authentication` from the effective policy rather than describing the service as always
+read-only.
+
 The telemetry package is a one-way projection of the authoritative domain models. The domain
 does not import FastAPI, WebSocket, JSON, or frontend code. `ResearchTradingPipeline` and
 `BacktestEngine` accept an optional transport-neutral publisher; omitting it retains the original

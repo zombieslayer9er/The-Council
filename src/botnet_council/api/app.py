@@ -3,15 +3,35 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from collections import defaultdict
-from typing import Any
+from collections.abc import Mapping
+from hmac import compare_digest
+from pathlib import Path
+from typing import Annotated, Any
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import ValidationError
 
 from botnet_council import __version__
+from botnet_council.council import CouncilConfig
+from botnet_council.experiments import (
+    ExperimentRequest,
+    ExperimentService,
+    FileExperimentRepository,
+    RandomExperimentRequest,
+)
+from botnet_council.experiments.models import ExperimentAgentConfig
+from botnet_council.market_data import (
+    CachedHistoricalProvider,
+    KrakenHistoricalProvider,
+    ParquetMarketDataCache,
+    ProviderId,
+)
 from botnet_council.telemetry.contracts import (
     API_VERSION,
     AgentDetailResponse,
@@ -21,8 +41,16 @@ from botnet_council.telemetry.contracts import (
     ErrorResponse,
     EventPage,
     EventType,
+    ExperimentBatchResponse,
+    ExperimentCreateRequest,
+    ExperimentEvaluationResponse,
+    ExperimentForecastResponse,
+    ExperimentOracleResponse,
+    ExperimentPage,
+    ExperimentResponse,
     HealthResponse,
     PortfolioResponse,
+    RandomExperimentCreateRequest,
     RunDetailResponse,
     RunKind,
     RunPage,
@@ -31,8 +59,18 @@ from botnet_council.telemetry.contracts import (
     TelemetryEvent,
 )
 from botnet_council.telemetry.publisher import EventBusSnapshot, EventFilter, InMemoryEventBus
+from botnet_council.telemetry.serializers import (
+    experiment_batch,
+    experiment_evaluation,
+    experiment_forecast,
+    experiment_oracle,
+    experiment_summary,
+)
 
 DEFAULT_WEBSOCKET_QUEUE_LIMIT = 256
+MINIMUM_CONTROL_TOKEN_LENGTH = 32
+CONTROL_TOKEN_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_CONTROL_TOKEN"
+CONTROL_BEARER = HTTPBearer(auto_error=False)
 ALLOWED_BROWSER_ORIGINS = frozenset(
     {
         "http://127.0.0.1:5173",
@@ -47,10 +85,16 @@ def create_app(
     bus: InMemoryEventBus | None = None,
     *,
     websocket_queue_limit: int = DEFAULT_WEBSOCKET_QUEUE_LIMIT,
+    experiment_service: ExperimentService | None = None,
+    command_token: str | None = None,
 ) -> FastAPI:
     if websocket_queue_limit < 1:
         raise ValueError("websocket_queue_limit must be positive")
     telemetry = bus or InMemoryEventBus()
+    experiments = experiment_service or _default_experiment_service()
+    control_token = command_token or os.environ.get(CONTROL_TOKEN_ENVIRONMENT_VARIABLE)
+    if control_token is not None and len(control_token) < MINIMUM_CONTROL_TOKEN_LENGTH:
+        raise ValueError("command_token must contain at least 32 characters")
     app = FastAPI(
         title="Botnet Council Telemetry API",
         version=API_VERSION,
@@ -58,6 +102,29 @@ def create_app(
         redoc_url=None,
     )
     app.state.telemetry = telemetry
+    app.state.experiments = experiments
+
+    async def require_command_access(
+        request: Request,
+        credentials: Annotated[
+            HTTPAuthorizationCredentials | None, Depends(CONTROL_BEARER)
+        ],
+    ) -> None:
+        if control_token is None:
+            raise HTTPException(503, "experiment control is disabled")
+        origin = request.headers.get("origin")
+        if origin is not None and origin not in ALLOWED_BROWSER_ORIGINS:
+            raise HTTPException(403, "origin is not allowed")
+        if (
+            credentials is None
+            or credentials.scheme.lower() != "bearer"
+            or not compare_digest(credentials.credentials, control_token)
+        ):
+            raise HTTPException(
+                401,
+                "command authorization failed",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     @app.middleware("http")
     async def request_id(request: Request, call_next: Any) -> Any:
@@ -71,10 +138,25 @@ def create_app(
     async def http_error(request: Request, error: HTTPException) -> JSONResponse:
         detail = error.detail
         message = str(detail) if isinstance(detail, str) else "request failed"
-        return _error(request, error.status_code, "http_error", message, detail)
+        return _error(
+            request,
+            error.status_code,
+            "http_error",
+            message,
+            detail,
+            headers=error.headers,
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
+        details = [
+            {key: value for key, value in item.items() if key in {"type", "loc", "msg"}}
+            for item in error.errors()
+        ]
+        return _error(request, 422, "validation_error", "request validation failed", details)
+
+    @app.exception_handler(ValidationError)
+    async def domain_validation_error(request: Request, error: ValidationError) -> JSONResponse:
         details = [
             {key: value for key, value in item.items() if key in {"type", "loc", "msg"}}
             for item in error.errors()
@@ -88,12 +170,19 @@ def create_app(
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> dict[str, Any]:
+        control_enabled = control_token is not None
         return {
             "api_version": API_VERSION,
             "status": "ok",
             "service": "botnet-council-telemetry",
             "backend_version": __version__,
-            "read_only": True,
+            "read_only": not control_enabled,
+            "capabilities": (
+                "telemetry_read",
+                "experiment_read",
+                *(("experiment_control",) if control_enabled else ()),
+            ),
+            "command_authentication": "bearer_token" if control_enabled else "disabled",
         }
 
     @app.get("/api/state", response_model=StateResponse)
@@ -281,6 +370,120 @@ def create_app(
             "signals": items,
         }
 
+    @app.post(
+        "/api/control/experiments",
+        response_model=ExperimentResponse,
+        status_code=201,
+        responses={422: {"model": ErrorResponse}},
+        dependencies=[Depends(require_command_access)],
+    )
+    async def create_experiment(body: ExperimentCreateRequest) -> dict[str, Any]:
+        try:
+            record = experiments.create(_experiment_request(body))
+        except ValidationError:
+            raise
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        return {"api_version": API_VERSION, "experiment": experiment_summary(record)}
+
+    @app.post(
+        "/api/control/experiments/{experiment_id}/run",
+        response_model=ExperimentResponse,
+        responses={404: {"model": ErrorResponse}},
+        dependencies=[Depends(require_command_access)],
+    )
+    async def run_experiment(experiment_id: str) -> dict[str, Any]:
+        try:
+            record = experiments.run(experiment_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+        return {"api_version": API_VERSION, "experiment": experiment_summary(record)}
+
+    @app.post(
+        "/api/control/experiment-batches/run",
+        response_model=ExperimentBatchResponse,
+        dependencies=[Depends(require_command_access)],
+    )
+    async def run_experiment_batch(body: RandomExperimentCreateRequest) -> Any:
+        try:
+            request = RandomExperimentRequest(
+                template=_experiment_request(body.template),
+                range_start=body.range_start,
+                range_end=body.range_end,
+                samples=body.samples,
+                seed=body.seed,
+            )
+            return experiment_batch(experiments.run_random_batch(request))
+        except ValidationError:
+            raise
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+
+    @app.get("/api/experiments", response_model=ExperimentPage)
+    async def list_experiments(
+        limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)
+    ) -> dict[str, Any]:
+        values = tuple(experiment_summary(item) for item in experiments.list())
+        return {
+            "api_version": API_VERSION,
+            "items": values[offset : offset + limit],
+            "total": len(values),
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @app.get(
+        "/api/experiments/{experiment_id}",
+        response_model=ExperimentResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def experiment_status(experiment_id: str) -> dict[str, Any]:
+        try:
+            record = experiments.get(experiment_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "experiment": experiment_summary(record)}
+
+    @app.get(
+        "/api/experiments/{experiment_id}/forecast",
+        response_model=ExperimentForecastResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def experiment_forecast_result(experiment_id: str) -> dict[str, Any]:
+        try:
+            value = experiments.forecast(experiment_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "forecast": experiment_forecast(value)}
+
+    @app.get(
+        "/api/experiments/{experiment_id}/oracle",
+        response_model=ExperimentOracleResponse,
+        responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    )
+    async def experiment_oracle_result(experiment_id: str) -> dict[str, Any]:
+        try:
+            value = experiments.oracle_outcome(experiment_id)
+        except PermissionError as error:
+            raise HTTPException(409, str(error)) from error
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "oracle_outcome": experiment_oracle(value)}
+
+    @app.get(
+        "/api/experiments/{experiment_id}/evaluation",
+        response_model=ExperimentEvaluationResponse,
+        responses={404: {"model": ErrorResponse}},
+    )
+    async def experiment_evaluation_result(experiment_id: str) -> dict[str, Any]:
+        try:
+            value = experiments.evaluation(experiment_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "evaluation": experiment_evaluation(value)}
+
     @app.websocket("/ws/events")
     async def websocket_events(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin")
@@ -338,8 +541,42 @@ def create_app(
     return app
 
 
+def _default_experiment_service() -> ExperimentService:
+    provider = CachedHistoricalProvider(
+        KrakenHistoricalProvider(), ParquetMarketDataCache(Path(".market-data-cache"))
+    )
+    return ExperimentService(provider, FileExperimentRepository(Path("experiment-results")))
+
+
+def _experiment_request(body: ExperimentCreateRequest) -> ExperimentRequest:
+    return ExperimentRequest(
+        instrument=body.instrument,
+        provider=ProviderId(body.provider),
+        evaluation_time=body.evaluation_time,
+        forecast_horizon=body.forecast_horizon,
+        timeframe=body.timeframe,
+        agents=tuple(
+            ExperimentAgentConfig(kind=item.kind, parameters=item.parameters)
+            for item in body.agents
+        ),
+        council=CouncilConfig(
+            agent_weights=body.council.agent_weights,
+            minimum_confidence=body.council.minimum_confidence,
+            minimum_conviction=body.council.minimum_conviction,
+        ),
+        random_seed=body.random_seed,
+        context_bars=body.context_bars,
+    )
+
+
 def _error(
-    request: Request, status: int, code: str, message: str, details: Any = None
+    request: Request,
+    status: int,
+    code: str,
+    message: str,
+    details: Any = None,
+    *,
+    headers: Mapping[str, str] | None = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status,
@@ -352,6 +589,7 @@ def _error(
                 "request_id": getattr(request.state, "request_id", str(uuid4())),
             },
         },
+        headers=headers,
     )
 
 

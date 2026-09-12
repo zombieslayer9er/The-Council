@@ -1,5 +1,8 @@
 # Architecture and safety invariants
 
+Blind historical forecast evaluation is documented in [experiments.md](experiments.md). Its
+oracle is a separate post-lock component and is not part of the agent/council execution graph.
+
 ## Dependency rule
 
 Dependencies point inward toward `schemas.py`. Agent implementations, the council,

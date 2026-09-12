@@ -4,6 +4,10 @@ A deliberately small Python scaffold for modular market research and **paper-onl
 execution. The core protocol is independent of model providers, agent frameworks,
 exchanges, and Freqtrade.
 
+Blind historical forecast experiments are available through `botnet_council.experiments` and the
+local API. See [`docs/experiments.md`](docs/experiments.md) for the information barrier,
+lifecycle, price convention, seeded sampling, persistence, and endpoints.
+
 > This repository is engineering scaffolding, not investment advice. It contains no
 > live-trading mode, exchange client, credential schema, or promise of profitability.
 

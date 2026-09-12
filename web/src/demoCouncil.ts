@@ -86,7 +86,7 @@ export function createDemoCouncilRun(now = new Date(), runId = `browser-demo-${n
 
   const last = events.at(-1)!;
   return {
-    health: { api_version: 'v1', status: 'ok', service: 'botnet-council-telemetry', backend_version: 'browser-demo', read_only: true },
+    health: { api_version: 'v1', status: 'ok', service: 'botnet-council-telemetry', backend_version: 'browser-demo', read_only: true, capabilities: ['telemetry_read', 'experiment_read'], command_authentication: 'disabled' },
     bootstrap: {
       api_version: 'v1', stream_id: streamId, sequence_watermark: last.sequence,
       state: { api_version: 'v1', stream_id: streamId, sequence_watermark: last.sequence, event_count: events.length, last_sequence: last.sequence, latest_portfolio: portfolio, latest_decision: decision, latest_risk_decision: risk, active_runs: [] },

@@ -338,7 +338,11 @@ class HealthResponse(PublicModel):
     status: Literal["ok"] = "ok"
     service: Literal["botnet-council-telemetry"] = "botnet-council-telemetry"
     backend_version: str
-    read_only: Literal[True] = True
+    read_only: bool
+    capabilities: tuple[
+        Literal["telemetry_read", "experiment_read", "experiment_control"], ...
+    ]
+    command_authentication: Literal["disabled", "bearer_token"]
 
 
 class StateResponse(PublicModel):
@@ -432,3 +436,179 @@ class BootstrapResponse(PublicModel):
     runs: tuple[RunSummary, ...]
     agents: tuple[AgentSummary, ...]
     events: tuple[TelemetryEvent, ...]
+
+
+class ExperimentAgentRequest(PublicModel):
+    kind: Literal["trend", "mean_reversion", "volatility", "regime", "seasonality"]
+    parameters: dict[str, int | float] = Field(default_factory=dict)
+
+
+class ExperimentCouncilRequest(PublicModel):
+    agent_weights: dict[str, float] = Field(default_factory=dict)
+    minimum_confidence: float = Field(default=0.20, ge=0, le=1)
+    minimum_conviction: float = Field(default=0.10, ge=0, le=1)
+
+
+class ExperimentCreateRequest(PublicModel):
+    instrument: str
+    provider: Literal["kraken", "in_memory"]
+    evaluation_time: datetime = Field(strict=False)
+    forecast_horizon: str
+    timeframe: str
+    agents: tuple[ExperimentAgentRequest, ...] = Field(strict=False)
+    council: ExperimentCouncilRequest = Field(default_factory=ExperimentCouncilRequest)
+    random_seed: int | None = None
+    context_bars: int | None = Field(default=None, ge=1)
+
+
+class RandomExperimentCreateRequest(PublicModel):
+    template: ExperimentCreateRequest
+    range_start: datetime = Field(strict=False)
+    range_end: datetime = Field(strict=False)
+    samples: int = Field(gt=0)
+    seed: int
+
+
+class ExperimentRequestPayload(PublicModel):
+    instrument: str
+    provider: str
+    evaluation_time: datetime
+    forecast_horizon: str
+    timeframe: str
+    agents: tuple[ExperimentAgentRequest, ...]
+    council: ExperimentCouncilRequest
+    random_seed: int | None
+    context_bars: int | None
+
+
+class ExperimentLifecyclePayload(PublicModel):
+    state: str
+    occurred_at: datetime
+    message: str
+
+
+class ExperimentProvenancePayload(PublicModel):
+    provider: str
+    request_start: datetime
+    request_end: datetime
+    as_of: datetime
+    fetched_at: datetime
+    source_version: str
+    adapter_semantic_version: str
+    cache_key: str
+    content_identity: str
+    snapshot_id: str | None = None
+
+
+class ExperimentForecastPayload(PublicModel):
+    forecast_id: str
+    experiment_id: str
+    evaluation_time: datetime
+    instrument: str
+    forecast_horizon: str
+    expected_return: float | None
+    direction: str
+    confidence: float
+    agent_forecasts: tuple[AgentSignalPayload, ...]
+    council_decision: CouncilDecisionPayload
+    council_weights: dict[str, float]
+    source_provenance: ExperimentProvenancePayload
+    agent_versions: dict[str, str]
+    finalized_at: datetime
+
+
+class ExperimentOraclePayload(PublicModel):
+    experiment_id: str
+    evaluation_time: datetime
+    horizon_end: datetime
+    price_convention: str
+    start_price: float | None
+    endpoint_price: float | None
+    realized_return: float | None
+    realized_direction: str | None
+    maximum_favorable_excursion: float | None
+    maximum_adverse_excursion: float | None
+    data_provenance: ExperimentProvenancePayload
+    horizon_complete: bool
+
+
+class ExperimentEvaluationPayload(PublicModel):
+    experiment_id: str
+    forecast_id: str
+    directional_correctness: bool
+    forecast_direction: str
+    realized_direction: str
+    expected_return: float | None
+    realized_return: float
+    absolute_return_error: float | None
+    signed_return_error: float | None
+    confidence: float
+    calibration_bucket: str
+    evaluated_at: datetime
+
+
+class ExperimentSummaryPayload(PublicModel):
+    experiment_id: str
+    state: str
+    request: ExperimentRequestPayload
+    lifecycle: tuple[ExperimentLifecyclePayload, ...]
+    forecast_locked: bool
+    oracle_available: bool
+    evaluation_available: bool
+    error: str | None
+
+
+class ExperimentResponse(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    experiment: ExperimentSummaryPayload
+
+
+class ExperimentPage(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    items: tuple[ExperimentSummaryPayload, ...]
+    total: int = Field(ge=0)
+    limit: int = Field(gt=0)
+    offset: int = Field(ge=0)
+
+
+class ExperimentForecastResponse(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    forecast: ExperimentForecastPayload
+
+
+class ExperimentOracleResponse(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    oracle_outcome: ExperimentOraclePayload
+
+
+class ExperimentEvaluationResponse(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    evaluation: ExperimentEvaluationPayload
+
+
+class CalibrationBucketPayload(PublicModel):
+    bucket: str
+    count: int
+    mean_confidence: float
+    directional_accuracy: float
+
+
+class ConfigurationPerformancePayload(PublicModel):
+    configuration_id: str
+    experiment_count: int
+    directional_accuracy: float
+    mean_absolute_return_error: float | None
+    forecast_bias: float | None
+
+
+class ExperimentBatchResponse(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    batch_id: str
+    selection_seed: int
+    experiment_ids: tuple[str, ...]
+    experiment_count: int
+    directional_accuracy: float
+    mean_absolute_return_error: float | None
+    forecast_bias: float | None
+    confidence_calibration: tuple[CalibrationBucketPayload, ...]
+    performance_by_configuration: tuple[ConfigurationPerformancePayload, ...]

@@ -1,7 +1,10 @@
 from botnet_council.market_data.base import HistoricalMarketDataProvider, MarketDataProvider
 from botnet_council.market_data.cache import CacheIntegrityError, ParquetMarketDataCache
 from botnet_council.market_data.cached import CachedHistoricalProvider
-from botnet_council.market_data.in_memory import InMemoryMarketDataProvider
+from botnet_council.market_data.in_memory import (
+    InMemoryHistoricalProvider,
+    InMemoryMarketDataProvider,
+)
 from botnet_council.market_data.kraken import (
     KrakenHistoricalProvider,
     ProviderError,
@@ -31,6 +34,7 @@ __all__ = [
     "HistoricalMarketDataProvider",
     "HistoricalRequest",
     "InMemoryMarketDataProvider",
+    "InMemoryHistoricalProvider",
     "Instrument",
     "KrakenHistoricalProvider",
     "MarketDataProvider",

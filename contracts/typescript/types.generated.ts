@@ -294,7 +294,9 @@ export interface HealthResponse {
   readonly status: 'ok';
   readonly service: 'botnet-council-telemetry';
   readonly backend_version: string;
-  readonly read_only: true;
+  readonly read_only: boolean;
+  readonly capabilities: ReadonlyArray<'telemetry_read' | 'experiment_read' | 'experiment_control'>;
+  readonly command_authentication: 'disabled' | 'bearer_token';
 }
 
 export interface StateResponse {
@@ -388,4 +390,180 @@ export interface BootstrapResponse {
   readonly runs: ReadonlyArray<RunSummary>;
   readonly agents: ReadonlyArray<AgentSummary>;
   readonly events: ReadonlyArray<TelemetryEvent>;
+}
+
+export interface ExperimentAgentRequest {
+  readonly kind: 'trend' | 'mean_reversion' | 'volatility' | 'regime' | 'seasonality';
+  readonly parameters: Record<string, number | number>;
+}
+
+export interface ExperimentCouncilRequest {
+  readonly agent_weights: Record<string, number>;
+  readonly minimum_confidence: number;
+  readonly minimum_conviction: number;
+}
+
+export interface ExperimentCreateRequest {
+  readonly instrument: string;
+  readonly provider: 'kraken' | 'in_memory';
+  readonly evaluation_time: string;
+  readonly forecast_horizon: string;
+  readonly timeframe: string;
+  readonly agents: ReadonlyArray<ExperimentAgentRequest>;
+  readonly council: ExperimentCouncilRequest;
+  readonly random_seed: number | null;
+  readonly context_bars: number | null;
+}
+
+export interface RandomExperimentCreateRequest {
+  readonly template: ExperimentCreateRequest;
+  readonly range_start: string;
+  readonly range_end: string;
+  readonly samples: number;
+  readonly seed: number;
+}
+
+export interface ExperimentRequestPayload {
+  readonly instrument: string;
+  readonly provider: string;
+  readonly evaluation_time: string;
+  readonly forecast_horizon: string;
+  readonly timeframe: string;
+  readonly agents: ReadonlyArray<ExperimentAgentRequest>;
+  readonly council: ExperimentCouncilRequest;
+  readonly random_seed: number | null;
+  readonly context_bars: number | null;
+}
+
+export interface ExperimentLifecyclePayload {
+  readonly state: string;
+  readonly occurred_at: string;
+  readonly message: string;
+}
+
+export interface ExperimentProvenancePayload {
+  readonly provider: string;
+  readonly request_start: string;
+  readonly request_end: string;
+  readonly as_of: string;
+  readonly fetched_at: string;
+  readonly source_version: string;
+  readonly adapter_semantic_version: string;
+  readonly cache_key: string;
+  readonly content_identity: string;
+  readonly snapshot_id: string | null;
+}
+
+export interface ExperimentForecastPayload {
+  readonly forecast_id: string;
+  readonly experiment_id: string;
+  readonly evaluation_time: string;
+  readonly instrument: string;
+  readonly forecast_horizon: string;
+  readonly expected_return: number | null;
+  readonly direction: string;
+  readonly confidence: number;
+  readonly agent_forecasts: ReadonlyArray<AgentSignalPayload>;
+  readonly council_decision: CouncilDecisionPayload;
+  readonly council_weights: Record<string, number>;
+  readonly source_provenance: ExperimentProvenancePayload;
+  readonly agent_versions: Record<string, string>;
+  readonly finalized_at: string;
+}
+
+export interface ExperimentOraclePayload {
+  readonly experiment_id: string;
+  readonly evaluation_time: string;
+  readonly horizon_end: string;
+  readonly price_convention: string;
+  readonly start_price: number | null;
+  readonly endpoint_price: number | null;
+  readonly realized_return: number | null;
+  readonly realized_direction: string | null;
+  readonly maximum_favorable_excursion: number | null;
+  readonly maximum_adverse_excursion: number | null;
+  readonly data_provenance: ExperimentProvenancePayload;
+  readonly horizon_complete: boolean;
+}
+
+export interface ExperimentEvaluationPayload {
+  readonly experiment_id: string;
+  readonly forecast_id: string;
+  readonly directional_correctness: boolean;
+  readonly forecast_direction: string;
+  readonly realized_direction: string;
+  readonly expected_return: number | null;
+  readonly realized_return: number;
+  readonly absolute_return_error: number | null;
+  readonly signed_return_error: number | null;
+  readonly confidence: number;
+  readonly calibration_bucket: string;
+  readonly evaluated_at: string;
+}
+
+export interface ExperimentSummaryPayload {
+  readonly experiment_id: string;
+  readonly state: string;
+  readonly request: ExperimentRequestPayload;
+  readonly lifecycle: ReadonlyArray<ExperimentLifecyclePayload>;
+  readonly forecast_locked: boolean;
+  readonly oracle_available: boolean;
+  readonly evaluation_available: boolean;
+  readonly error: string | null;
+}
+
+export interface ExperimentResponse {
+  readonly api_version: 'v1';
+  readonly experiment: ExperimentSummaryPayload;
+}
+
+export interface ExperimentPage {
+  readonly api_version: 'v1';
+  readonly items: ReadonlyArray<ExperimentSummaryPayload>;
+  readonly total: number;
+  readonly limit: number;
+  readonly offset: number;
+}
+
+export interface ExperimentForecastResponse {
+  readonly api_version: 'v1';
+  readonly forecast: ExperimentForecastPayload;
+}
+
+export interface ExperimentOracleResponse {
+  readonly api_version: 'v1';
+  readonly oracle_outcome: ExperimentOraclePayload;
+}
+
+export interface ExperimentEvaluationResponse {
+  readonly api_version: 'v1';
+  readonly evaluation: ExperimentEvaluationPayload;
+}
+
+export interface CalibrationBucketPayload {
+  readonly bucket: string;
+  readonly count: number;
+  readonly mean_confidence: number;
+  readonly directional_accuracy: number;
+}
+
+export interface ConfigurationPerformancePayload {
+  readonly configuration_id: string;
+  readonly experiment_count: number;
+  readonly directional_accuracy: number;
+  readonly mean_absolute_return_error: number | null;
+  readonly forecast_bias: number | null;
+}
+
+export interface ExperimentBatchResponse {
+  readonly api_version: 'v1';
+  readonly batch_id: string;
+  readonly selection_seed: number;
+  readonly experiment_ids: ReadonlyArray<string>;
+  readonly experiment_count: number;
+  readonly directional_accuracy: number;
+  readonly mean_absolute_return_error: number | null;
+  readonly forecast_bias: number | null;
+  readonly confidence_calibration: ReadonlyArray<CalibrationBucketPayload>;
+  readonly performance_by_configuration: ReadonlyArray<ConfigurationPerformancePayload>;
 }
