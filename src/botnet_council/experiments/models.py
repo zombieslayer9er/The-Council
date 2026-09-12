@@ -25,7 +25,14 @@ from botnet_council.schemas import (
     PortfolioState,
 )
 
-AgentKind = Literal["trend", "mean_reversion", "volatility", "regime", "seasonality"]
+AgentKind = Literal[
+    "trend",
+    "mean_reversion",
+    "volatility",
+    "regime",
+    "seasonality",
+    "historical_recurrence",
+]
 
 
 class ExperimentModel(BaseModel):

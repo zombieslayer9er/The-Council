@@ -393,7 +393,7 @@ export interface BootstrapResponse {
 }
 
 export interface ExperimentAgentRequest {
-  readonly kind: 'trend' | 'mean_reversion' | 'volatility' | 'regime' | 'seasonality';
+  readonly kind: 'trend' | 'mean_reversion' | 'volatility' | 'regime' | 'seasonality' | 'historical_recurrence';
   readonly parameters: Record<string, number | number>;
 }
 

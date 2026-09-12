@@ -439,7 +439,14 @@ class BootstrapResponse(PublicModel):
 
 
 class ExperimentAgentRequest(PublicModel):
-    kind: Literal["trend", "mean_reversion", "volatility", "regime", "seasonality"]
+    kind: Literal[
+        "trend",
+        "mean_reversion",
+        "volatility",
+        "regime",
+        "seasonality",
+        "historical_recurrence",
+    ]
     parameters: dict[str, int | float] = Field(default_factory=dict)
 
 

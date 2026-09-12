@@ -4,6 +4,8 @@ Blind historical forecast evaluation is documented in [experiments.md](experimen
 oracle is a separate post-lock component and is not part of the agent/council execution graph.
 Immutable post-run storage and ground-truth-free Council replay are documented in
 [experience-cache.md](experience-cache.md).
+The independent-year, full-history specialist is documented in
+[historical-recurrence.md](historical-recurrence.md).
 
 ## Dependency rule
 

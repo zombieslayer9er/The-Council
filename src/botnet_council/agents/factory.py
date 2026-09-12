@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from botnet_council.agents.base import SpecialistAgent
+from botnet_council.agents.historical_recurrence import HistoricalRecurrenceAgent
 from botnet_council.agents.mean_reversion import MeanReversionAgent
 from botnet_council.agents.regime import RegimeClassificationAgent
 from botnet_council.agents.seasonality import SeasonalityAgent
@@ -18,6 +19,7 @@ _CONSTRUCTORS: dict[str, Any] = {
     "volatility": VolatilityAgent,
     "regime": RegimeClassificationAgent,
     "seasonality": SeasonalityAgent,
+    "historical_recurrence": HistoricalRecurrenceAgent,
 }
 
 
