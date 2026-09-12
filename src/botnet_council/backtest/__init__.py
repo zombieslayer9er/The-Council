@@ -1,4 +1,25 @@
+from botnet_council.backtest.authoritative import (
+    AuthoritativeBacktestEngine,
+    AuthoritativeBacktestRequest,
+    AuthoritativeBacktestResult,
+    EngineProvenance,
+    EquityPoint,
+    NormalizedTrade,
+    RejectedOrder,
+    StrategyAdapterConfig,
+    ValidationArtifact,
+    ValidationKind,
+    ValidationStatus,
+)
 from botnet_council.backtest.engine import BacktestEngine
+from botnet_council.backtest.episode import EpisodeRecord, episode_identity
+from botnet_council.backtest.freqtrade import (
+    FreqtradeArtifactError,
+    FreqtradeBacktestEngine,
+    FreqtradeEngineError,
+    FreqtradeProcessError,
+    FreqtradeUnavailableError,
+)
 from botnet_council.backtest.metrics import maximum_drawdown
 from botnet_council.backtest.models import (
     AgentConfig,
@@ -17,6 +38,9 @@ from botnet_council.backtest.persistence import persist_backtest
 
 __all__ = [
     "AgentConfig",
+    "AuthoritativeBacktestEngine",
+    "AuthoritativeBacktestRequest",
+    "AuthoritativeBacktestResult",
     "BacktestConfig",
     "BacktestDataProvenance",
     "BacktestEngine",
@@ -25,9 +49,24 @@ __all__ = [
     "BacktestResult",
     "BacktestRun",
     "BenchmarkMetrics",
+    "EngineProvenance",
+    "EpisodeRecord",
+    "EquityPoint",
+    "FreqtradeArtifactError",
+    "FreqtradeBacktestEngine",
+    "FreqtradeEngineError",
+    "FreqtradeProcessError",
+    "FreqtradeUnavailableError",
+    "NormalizedTrade",
     "OrderLifecycleRecord",
     "OrderLifecycleStatus",
     "PerformanceMetrics",
+    "RejectedOrder",
+    "StrategyAdapterConfig",
+    "ValidationArtifact",
+    "ValidationKind",
+    "ValidationStatus",
     "maximum_drawdown",
+    "episode_identity",
     "persist_backtest",
 ]
