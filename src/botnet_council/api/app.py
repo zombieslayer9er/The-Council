@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Annotated, Any
 from uuid import uuid4
 
+from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -121,6 +122,8 @@ def create_app(
     app.state.experiments = experiments
     app.state.experiences = experiences
     app.state.weights = weights
+    # One bounded worker lane serializes runs/batches while reads and streams remain live.
+    experiment_limiter = CapacityLimiter(1)
 
     async def require_command_access(
         request: Request,
@@ -473,7 +476,9 @@ def create_app(
     )
     async def create_experiment(body: ExperimentCreateRequest) -> dict[str, Any]:
         try:
-            record = experiments.create(_experiment_request(body))
+            record = await to_thread.run_sync(
+                experiments.create, _experiment_request(body), limiter=experiment_limiter
+            )
         except ValidationError:
             raise
         except ValueError as error:
@@ -488,7 +493,9 @@ def create_app(
     )
     async def run_experiment(experiment_id: str) -> dict[str, Any]:
         try:
-            record = experiments.run(experiment_id)
+            record = await to_thread.run_sync(
+                experiments.run, experiment_id, limiter=experiment_limiter
+            )
         except LookupError as error:
             raise HTTPException(404, str(error)) from error
         except ValueError as error:
@@ -509,7 +516,10 @@ def create_app(
                 samples=body.samples,
                 seed=body.seed,
             )
-            return experiment_batch(experiments.run_random_batch(request))
+            result = await to_thread.run_sync(
+                experiments.run_random_batch, request, limiter=experiment_limiter
+            )
+            return experiment_batch(result)
         except ValidationError:
             raise
         except ValueError as error:

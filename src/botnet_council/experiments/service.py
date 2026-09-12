@@ -114,7 +114,7 @@ class ExperimentService:
             record = transition(
                 record,
                 ExperimentState.FAILED,
-                request.evaluation_time,
+                record.lifecycle[-1].occurred_at,
                 message=message,
                 error=message,
             )

@@ -313,6 +313,11 @@ class ExperimentRecord(ExperimentModel):
             raise ValueError("experiment ID does not match request identity")
         if not self.lifecycle or self.lifecycle[-1].state is not self.state:
             raise ValueError("lifecycle tail must match current state")
+        if any(
+            current.occurred_at < previous.occurred_at
+            for previous, current in zip(self.lifecycle, self.lifecycle[1:], strict=False)
+        ):
+            raise ValueError("lifecycle timestamps must be monotonic")
         if self.forecast is not None and self.state in {
             ExperimentState.CREATED,
             ExperimentState.CONTEXT_READY,

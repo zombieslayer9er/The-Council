@@ -80,6 +80,9 @@ def result_payload(as_of: datetime) -> dict[str, object]:
     return {
         "strategy": {
             "CouncilStrategy": {
+                "backtest_start_ts": (as_of - timedelta(days=1)).timestamp(),
+                "backtest_end_ts": as_of.timestamp(),
+                "timeframe": "5m",
                 "starting_balance": 10_000.0,
                 "final_balance": 10_098.0,
                 "profit_total_abs": 98.0,

@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
-from botnet_council.schemas import ActionIntent, ApprovedOrder, CouncilDecision, Direction
+from botnet_council.schemas import ActionIntent, ApprovedOrder, CouncilDecision
 
 PaperMode = Literal["dry_run", "backtest"]
 
@@ -54,7 +54,7 @@ class CouncilDecisionStrategyAdapter:
     """Translate decisions without introducing Freqtrade types into Council contracts."""
 
     adapter_id: str = "council-decision-signals"
-    adapter_version: str = "1.2"
+    adapter_version: str = "1.3"
 
     def translate(
         self,
@@ -80,6 +80,13 @@ class CouncilDecisionStrategyAdapter:
                 raise ValueError("Freqtrade candle must open before the decision data cutoff")
             if candle_open + _timeframe_duration(decision.timeframe) < decision.decided_at:
                 raise ValueError("Freqtrade candle closes before the decision")
+            if decision.action is ActionIntent.REDUCE_ONLY and decision.target_exposure != 0:
+                raise ValueError("nonzero reduce-only targets require current position context")
+            if (
+                decision.action is ActionIntent.TARGET_EXPOSURE
+                and decision.target_exposure not in (None, 0)
+            ):
+                raise ValueError("nonzero target exposure requires position sizing support")
             actionable = decision.action in (
                 ActionIntent.TARGET_EXPOSURE,
                 ActionIntent.REDUCE_ONLY,
@@ -93,9 +100,9 @@ class CouncilDecisionStrategyAdapter:
                     pair=decision.symbol,
                     candle_at=candle_open,
                     enter_long=enter_long,
-                    exit_long=flatten or decision.forecast_direction is Direction.SHORT,
+                    exit_long=flatten or enter_short,
                     enter_short=enter_short,
-                    exit_short=flatten or decision.forecast_direction is Direction.LONG,
+                    exit_short=flatten or enter_long,
                     signal_tag=decision.action.value,
                     decision_id=decision.decision_id,
                     source_snapshot_id=decision.source_snapshot_id,

@@ -102,6 +102,7 @@ def experience_summary(value: ExperienceEpisode) -> ExperienceSummaryPayload:
     oracle = None if truth is None else truth.oracle_outcome
     return ExperienceSummaryPayload(
         episode_id=value.episode_id,
+        backtest_run_id=value.evidence.backtest_run_id,
         symbol=value.evidence.symbol,
         timeframe=value.evidence.timeframe,
         decision_timestamp=value.evidence.decision_timestamp,
@@ -132,7 +133,6 @@ def experience_detail(value: ExperienceEpisode) -> ExperienceDetailPayload:
             AppliedWeightPayload(agent_id=item.agent_id, weight=item.weight)
             for item in value.evidence.applied_weights
         ),
-        backtest_run_id=value.evidence.backtest_run_id,
         risk_policy_version=value.evidence.risk_policy_version,
         truth_available_at=None if value.truth is None else value.truth.available_at,
     )

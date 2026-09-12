@@ -436,6 +436,7 @@ export interface AppliedWeightPayload {
 
 export interface ExperienceSummaryPayload {
   readonly episode_id: string;
+  readonly backtest_run_id: string;
   readonly symbol: string;
   readonly timeframe: string;
   readonly decision_timestamp: string;
@@ -452,6 +453,7 @@ export interface ExperienceSummaryPayload {
 
 export interface ExperienceDetailPayload {
   readonly episode_id: string;
+  readonly backtest_run_id: string;
   readonly symbol: string;
   readonly timeframe: string;
   readonly decision_timestamp: string;
@@ -467,7 +469,6 @@ export interface ExperienceDetailPayload {
   readonly decision: CouncilDecisionPayload;
   readonly specialist_outputs: ReadonlyArray<AgentSignalPayload>;
   readonly applied_weights: ReadonlyArray<AppliedWeightPayload>;
-  readonly backtest_run_id: string;
   readonly risk_policy_version: string;
   readonly truth_available_at: string | null;
 }

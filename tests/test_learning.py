@@ -267,7 +267,7 @@ def test_librarian_counts_equivalent_reruns_once() -> None:
 
 def test_teacher_accepts_held_out_improvement_deterministically() -> None:
     current, proposal = librarian_proposal()
-    held_out = tuple(learning_episode(hour) for hour in range(12, 18))
+    held_out = tuple(learning_episode(hour) for hour in range(12, 24, 2))
     teacher = Teacher(
         TeacherConfig(minimum_held_out_episodes=4, minimum_score_improvement=0.0)
     )
@@ -313,7 +313,7 @@ def test_teacher_rejects_evaluation_before_proposal_creation() -> None:
         Teacher().evaluate(
             current,
             proposal,
-            tuple(learning_episode(hour) for hour in range(12, 18)),
+            tuple(learning_episode(hour) for hour in range(12, 24, 2)),
             evaluated_at=proposal.created_at - timedelta(hours=1),
         )
 
@@ -350,7 +350,7 @@ def test_teacher_rejects_overfit_proposal_and_profile_store_cannot_promote_it(
 ) -> None:
     current, proposal = librarian_proposal()
     held_out = tuple(
-        learning_episode(hour, realized_positive=False) for hour in range(12, 18)
+        learning_episode(hour, realized_positive=False) for hour in range(12, 24, 2)
     )
     result = Teacher(
         TeacherConfig(minimum_held_out_episodes=4, minimum_score_improvement=0.0)
@@ -370,7 +370,7 @@ def test_only_accepted_teacher_result_creates_generation_and_rollback_preserves_
     tmp_path: Path,
 ) -> None:
     current, proposal = librarian_proposal()
-    held_out = tuple(learning_episode(hour) for hour in range(12, 18))
+    held_out = tuple(learning_episode(hour) for hour in range(12, 24, 2))
     result = Teacher(
         TeacherConfig(minimum_held_out_episodes=4, minimum_score_improvement=0.0)
     ).evaluate(current, proposal, held_out, evaluated_at=BASE + timedelta(hours=25))

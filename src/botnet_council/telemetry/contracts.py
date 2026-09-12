@@ -489,6 +489,7 @@ class AppliedWeightPayload(PublicModel):
 
 class ExperienceSummaryPayload(PublicModel):
     episode_id: str
+    backtest_run_id: str
     symbol: str
     timeframe: str
     decision_timestamp: datetime
@@ -507,7 +508,6 @@ class ExperienceDetailPayload(ExperienceSummaryPayload):
     decision: CouncilDecisionPayload
     specialist_outputs: tuple[AgentSignalPayload, ...]
     applied_weights: tuple[AppliedWeightPayload, ...]
-    backtest_run_id: str
     risk_policy_version: str
     truth_available_at: datetime | None
 

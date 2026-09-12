@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import UTC, datetime
 
+from botnet_council.agents._math import timeframe_delta
 from botnet_council.experience import ExperienceEpisode
 from botnet_council.learning.models import (
     AdaptiveWeight,
@@ -57,6 +58,10 @@ class Librarian:
                         if value.agent_id == entry.agent_id
                         and value.signal_type is SignalType.ALPHA
                         and value.validity is SignalValidity.VALID
+                        and (scope.horizon_bars is None or value.horizon_bars == scope.horizon_bars)
+                        and value.horizon_bars * timeframe_delta(item.evidence.timeframe)
+                        == item.truth.oracle_outcome.horizon_end
+                        - item.truth.oracle_outcome.evaluation_time
                     ),
                     None,
                 )

@@ -1,7 +1,17 @@
 import type {
   AgentSignalPayload,
   ExperimentSummaryPayload,
+  ExperienceSummaryPayload,
 } from '../../contracts/typescript/types.generated';
+
+export function matchingExperienceId(
+  experiences: readonly Pick<ExperienceSummaryPayload, 'episode_id' | 'backtest_run_id'>[],
+  experimentId: string | undefined,
+): string | undefined {
+  if (!experimentId) return undefined;
+  const matches = experiences.filter((item) => item.backtest_run_id === experimentId);
+  return matches.length === 1 ? matches[0].episode_id : undefined;
+}
 
 export interface RecurrenceObservation {
   annual_year: number;

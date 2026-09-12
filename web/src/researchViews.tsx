@@ -12,7 +12,7 @@ import type {
 import type { ResearchData } from './api';
 import { loadExperience, loadExperimentEvidence } from './api';
 import { agentLabel, money, percent, shortTime } from './model';
-import { councilContributions, evidenceRefreshKey, recurrenceEvidence, type RecurrenceObservation } from './researchModel';
+import { councilContributions, evidenceRefreshKey, matchingExperienceId, recurrenceEvidence, type RecurrenceObservation } from './researchModel';
 
 export function EvidenceView({ context, signals }: { context: MarketContextPayload | null; signals: readonly AgentSignalPayload[] }) {
   const contributions = councilContributions(signals);
@@ -81,10 +81,8 @@ export function OutcomesView({ research }: { research: ResearchData | null }) {
   const previousExperimentId = useRef<string | null>(null);
   useEffect(() => { if (!selected && experiments.length) setSelected(experiments[0].experiment_id); }, [experiments, selected]);
   const summary = experiments.find((item) => item.experiment_id === selected) ?? null;
-  const matching = summary
-    ? experiences.find((item) => item.decision_timestamp === summary.request.evaluation_time && item.symbol === summary.request.instrument)
-    : undefined;
-  const refreshKey = evidenceRefreshKey(summary, matching?.episode_id ?? null);
+  const matchingId = matchingExperienceId(experiences, summary?.experiment_id);
+  const refreshKey = evidenceRefreshKey(summary, matchingId ?? null);
   useEffect(() => {
     if (previousExperimentId.current !== (summary?.experiment_id ?? null)) {
       setForecast(null); setOracle(null); setEvaluation(null); setEpisode(null);
@@ -98,7 +96,8 @@ export function OutcomesView({ research }: { research: ResearchData | null }) {
         setForecast(value.forecast?.forecast ?? null); setOracle(value.oracle?.oracle_outcome ?? null); setEvaluation(value.evaluation?.evaluation ?? null);
       })
       .catch(() => undefined);
-    if (matching) void loadExperience(matching.episode_id, controller.signal).then((value) => {
+    setEpisode(null);
+    if (matchingId) void loadExperience(matchingId, controller.signal).then((value) => {
       if (controller.signal.aborted) return;
       setEpisode(value.episode);
     }).catch(() => undefined);

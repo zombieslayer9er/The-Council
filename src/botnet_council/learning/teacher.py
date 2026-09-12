@@ -62,6 +62,10 @@ class Teacher:
         ):
             raise ValueError("Teacher cannot use truth unavailable at evaluation time")
         baseline = evaluate_profile(base, episodes, self._config)
+        if baseline.episode_count < self._config.minimum_held_out_episodes:
+            raise ValueError(
+                "insufficient non-overlapping held-out episodes for Teacher evaluation"
+            )
         proposed_profile = apply_changes(
             base,
             proposal.changes,
@@ -127,6 +131,9 @@ def evaluate_profile(
         if truth is None or truth.oracle_outcome.realized_return is None:
             raise ValueError("profile evaluation requires complete realized returns")
         evidence = episode.evidence
+        if last_exit is not None and evidence.decision_timestamp < last_exit:
+            continue
+        last_exit = truth.oracle_outcome.horizon_end
         weights = {
             signal.agent_id: _resolved_agent_weight(
                 profile,
@@ -148,12 +155,8 @@ def evaluate_profile(
         )
         exposure = decision.target_exposure or 0.0
         realized = truth.oracle_outcome.realized_return
-        decision_timestamp = evidence.decision_timestamp
-        overlapping = last_exit is not None and decision_timestamp < last_exit
-        returns.append(0.0 if overlapping else exposure * realized)
-        benchmark_returns.append(0.0 if overlapping else realized)
-        if not overlapping:
-            last_exit = truth.oracle_outcome.horizon_end
+        returns.append(exposure * realized)
+        benchmark_returns.append(realized)
         actual_direction = truth.oracle_outcome.realized_direction
         correct = float(decision.forecast_direction is actual_direction)
         correctness.append(correct)
@@ -182,7 +185,7 @@ def evaluate_profile(
     }
     score = sum(values[name] * weight for name, weight in config.metric_weights.items())
     return EvaluationMetrics(
-        episode_count=len(episodes),
+        episode_count=len(returns),
         total_return=total_return,
         benchmark_relative_return=values["benchmark_relative_return"],
         maximum_drawdown=drawdown,
@@ -224,11 +227,17 @@ def _maximum_drawdown(returns: list[float]) -> float:
 
 
 def _slice_returns(returns: list[float]) -> tuple[float, ...]:
-    size = max(1, len(returns) // 3)
-    return tuple(
-        prod(1.0 + value for value in returns[index : index + size]) - 1.0
-        for index in range(0, len(returns), size)
-    )
+    if not returns:
+        return ()
+    count = min(3, len(returns))
+    size, remainder = divmod(len(returns), count)
+    slices: list[float] = []
+    offset = 0
+    for index in range(count):
+        end = offset + size + int(index < remainder)
+        slices.append(prod(1.0 + value for value in returns[offset:end]) - 1.0)
+        offset = end
+    return tuple(slices)
 
 
 def _passes(

@@ -219,6 +219,9 @@ def test_council_decision_adapter_writes_immutable_freqtrade_signals(
     )
     adapter = CouncilDecisionStrategyAdapter()
     destination = tmp_path / "signals.json"
+    values = decision.model_dump(mode="python", warnings=False)
+    values.update(target_exposure=0.0, decision_id="")
+    decision = type(decision).model_validate(values)
     candle_open = decision.source_as_of - timedelta(minutes=5)
     candle_opens = {decision.decision_id: candle_open}
 
@@ -232,7 +235,8 @@ def test_council_decision_adapter_writes_immutable_freqtrade_signals(
         (decision,), destination, candle_open_by_decision_id=candle_opens
     )
 
-    assert translated[0].enter_long is True
+    assert translated[0].enter_long is False
+    assert translated[0].exit_long is True
     assert translated[0].candle_at == candle_open
     assert translated[0].decision_id == decision.decision_id
     assert translated[0].decided_at == decision.decided_at

@@ -34,7 +34,7 @@ class CouncilSignalStrategy(IStrategy):
         payload = json.loads(Path(configured).read_text(encoding="utf-8"))
         if payload.get("adapter_id") != "council-decision-signals":
             raise ValueError("unsupported Council signal adapter")
-        if payload.get("adapter_version") != "1.2":
+        if payload.get("adapter_version") != "1.3":
             raise ValueError("unsupported Council signal artifact version")
         rows = payload.get("signals")
         if not isinstance(rows, list):
@@ -60,6 +60,14 @@ class CouncilSignalStrategy(IStrategy):
                 if type(row.get(field)) is not bool:
                     raise ValueError(f"Council signal {field} must be boolean")
             candle_at = pd.Timestamp(timestamp)
+            if row["enter_long"] or row["enter_short"]:
+                raise ValueError("Council entries require position sizing support")
+            tag = row.get("signal_tag")
+            if tag not in {"target_exposure", "reduce_only", "no_action", "abstain"}:
+                raise ValueError("unsupported Council action")
+            flatten = tag in {"target_exposure", "reduce_only"}
+            if row["exit_long"] != flatten or row["exit_short"] != flatten:
+                raise ValueError("Council exits do not match action semantics")
             if candle_at.tzinfo is None:
                 raise ValueError("Council signal candle_at must be timezone-aware")
             candle_at = candle_at.tz_convert("UTC")

@@ -250,7 +250,7 @@ class LibrarianConfig(LearningModel):
 
 
 class TeacherConfig(LearningModel):
-    scoring_version: str = "teacher-score-v2"
+    scoring_version: str = "teacher-score-v3"
     minimum_held_out_episodes: int = Field(default=8, ge=2)
     minimum_score_improvement: float = Field(default=0.001, ge=0)
     maximum_worst_slice_degradation: float = Field(default=0.02, ge=0)

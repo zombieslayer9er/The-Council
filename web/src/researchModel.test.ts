@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { ExperimentSummaryPayload } from '../../contracts/typescript/types.generated';
 import type { AgentSignalPayload } from '../../contracts/typescript/types.generated';
-import { councilContributions, evidenceRefreshKey, recurrenceEvidence } from './researchModel';
+import { councilContributions, evidenceRefreshKey, matchingExperienceId, recurrenceEvidence } from './researchModel';
+
+it('joins replay only by exact experiment identity and rejects ambiguity', () => {
+  const episodes = [{episode_id:'a',backtest_run_id:'experiment-a'}, {episode_id:'b',backtest_run_id:'experiment-b'}];
+  expect(matchingExperienceId(episodes, 'experiment-b')).toBe('b');
+  expect(matchingExperienceId([...episodes].reverse(), 'experiment-b')).toBe('b');
+  expect(matchingExperienceId(episodes, 'unknown')).toBeUndefined();
+  expect(matchingExperienceId([...episodes, {episode_id:'other-b',backtest_run_id:'experiment-b'}], 'experiment-b')).toBeUndefined();
+});
 
 function signal(overrides: Partial<AgentSignalPayload> = {}): AgentSignalPayload {
   return {

@@ -61,22 +61,28 @@ class ContextService:
             )
             with self._lock:
                 cached = self._cache.get(cache_key)
-            if cached is None:
-                try:
-                    fetched = provider.fetch(request)
-                except Exception as error:
-                    raise ContextProviderError(provider.provider_id, str(error)) from error
-                if any(item.capability not in provider.capabilities for item in fetched):
-                    raise ContextProviderError(
-                        provider.provider_id, "returned an undeclared capability"
-                    )
-                if any(item.provenance.provider != provider.provider_id for item in fetched):
-                    raise ContextProviderError(
-                        provider.provider_id, "returned mismatched provenance"
-                    )
-                cached = tuple(fetched)
-                with self._lock:
-                    self._cache[cache_key] = cached
+                if cached is None:
+                    try:
+                        fetched = provider.fetch(request)
+                    except Exception as error:
+                        raise ContextProviderError(provider.provider_id, str(error)) from error
+                    if any(item.capability not in provider.capabilities for item in fetched):
+                        raise ContextProviderError(
+                            provider.provider_id, "returned an undeclared capability"
+                        )
+                    if any(item.provenance.provider != provider.provider_id for item in fetched):
+                        raise ContextProviderError(
+                            provider.provider_id, "returned mismatched provenance"
+                        )
+                    if provider.source_version != cache_key[1] or any(
+                        item.provenance.source_version != cache_key[1] for item in fetched
+                    ):
+                        raise ContextProviderError(
+                            provider.provider_id, "returned mismatched source version"
+                        )
+                    cached = tuple(fetched)
+                    with self._lock:
+                        self._cache[cache_key] = cached
             found.extend(item for item in cached if item.capability in selected)
         found.sort(
             key=lambda item: (

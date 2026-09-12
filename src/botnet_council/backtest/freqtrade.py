@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
+from math import isclose
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, cast
 from uuid import uuid4
@@ -312,7 +313,7 @@ class FreqtradeBacktestEngine:
 
     def _runtime_path(self, path: str | Path) -> str:
         mapper = getattr(self._runner, "map_path", None)
-        return str(path) if mapper is None else str(mapper(path))
+        return str(Path(path).resolve()) if mapper is None else str(mapper(path))
 
     def _effective_config(self, request: AuthoritativeBacktestRequest) -> dict[str, Any]:
         supplied = dict(request.engine_configuration)
@@ -490,6 +491,12 @@ def _normalize_result(
     pnl = _number(raw, "profit_total_abs")
     total_return = _number(raw, "profit_total")
     maximum_drawdown = abs(_number(raw, "max_drawdown_account"))
+    if not isclose(starting, request.starting_capital, rel_tol=1e-9, abs_tol=1e-8):
+        raise FreqtradeArtifactError("result starting capital does not match request")
+    if not isclose(ending - starting, pnl, rel_tol=1e-9, abs_tol=1e-8) or not isclose(
+        total_return, pnl / starting, rel_tol=1e-9, abs_tol=1e-8
+    ):
+        raise FreqtradeArtifactError("result capital and return metrics do not reconcile")
     equity = _normalize_equity(raw.get("daily_profit"), starting)
     rejected_count = int(_number(raw, "rejected_signals", 0.0))
     warnings: list[str] = []
@@ -577,8 +584,6 @@ def _validate_result_period(
         "end": strategy.get("backtest_end_ts"),
         "timeframe": strategy.get("timeframe"),
     }
-    if not any(value is not None for value in supplied.values()):
-        return
     if supplied["timeframe"] != request.timeframe:
         raise FreqtradeArtifactError("result period does not match request")
     if supplied["start"] is None or supplied["end"] is None:
