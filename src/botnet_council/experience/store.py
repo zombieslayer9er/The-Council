@@ -128,12 +128,14 @@ class ExperienceStore:
         weight_generation_id: str = "weights-v0000",
         risk_policy_version: str = "not-applicable",
         regime: str | None = None,
+        asset_class: str | None = None,
     ) -> tuple[ExperienceEpisode, CacheWriteStatus]:
         episode = episode_from_experiment(
             record,
             weight_generation_id=weight_generation_id,
             risk_policy_version=risk_policy_version,
             regime=regime,
+            asset_class=asset_class,
         )
         return episode, self.save(episode)
 

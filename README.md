@@ -117,6 +117,9 @@ The fixed-hypothesis calendar matcher and its causal restrictions are documented
 [`docs/seasonality.md`](docs/seasonality.md).
 The separate full-history annual evidence model is documented in
 [`docs/historical-recurrence.md`](docs/historical-recurrence.md).
+Immutable replay and conservative weight learning are documented in
+[`docs/experience-cache.md`](docs/experience-cache.md) and
+[`docs/learning-loop.md`](docs/learning-loop.md).
 
 ## Repository map
 

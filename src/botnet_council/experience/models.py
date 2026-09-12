@@ -43,6 +43,7 @@ class DecisionEvidence(ExperienceModel):
     """Only information available in the original decision/execution graph."""
 
     symbol: str
+    asset_class: str | None = None
     timeframe: str
     decision_timestamp: datetime
     market_data_content_identity: str
@@ -231,6 +232,7 @@ def episode_from_experiment(
     weight_generation_id: str = "weights-v0000",
     risk_policy_version: str = "not-applicable",
     regime: str | None = None,
+    asset_class: str | None = None,
 ) -> ExperienceEpisode:
     if record.state is not ExperimentState.COMPLETE:
         raise ValueError("only complete judged experiments can become experiences")
@@ -245,6 +247,7 @@ def episode_from_experiment(
     provenance = record.context.provenance
     evidence = DecisionEvidence(
         symbol=record.request.instrument,
+        asset_class=asset_class,
         timeframe=record.request.timeframe,
         decision_timestamp=forecast.council_decision.decided_at,
         market_data_content_identity=provenance.content_identity,

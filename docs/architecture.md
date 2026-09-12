@@ -6,6 +6,7 @@ Immutable post-run storage and ground-truth-free Council replay are documented i
 [experience-cache.md](experience-cache.md).
 The independent-year, full-history specialist is documented in
 [historical-recurrence.md](historical-recurrence.md).
+The post-judgment adaptive loop is documented in [learning-loop.md](learning-loop.md).
 
 ## Dependency rule
 
