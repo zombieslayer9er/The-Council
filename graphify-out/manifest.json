@@ -718,5 +718,191 @@
     "seen": 1789245579.5751185,
     "ast_hash": "f306b69b2d44ce9b76ea335f21dcc892",
     "semantic_hash": "f306b69b2d44ce9b76ea335f21dcc892"
+  },
+  ".codex/skills/graphify/SKILL.md": {
+    "mtime": 1789245568.503961,
+    "seen": 1789246480.4392064,
+    "ast_hash": "212b55d95333d84e14262f8ec83faa2b",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/add-watch.md": {
+    "mtime": 1789238750.8467486,
+    "seen": 1789246480.4392064,
+    "ast_hash": "d59d027fe449f06aa03905a01184e779",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/exports.md": {
+    "mtime": 1789238750.8467486,
+    "seen": 1789246480.4392064,
+    "ast_hash": "9da2a2152e60a22f07f05fed5158f287",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/extraction-spec.md": {
+    "mtime": 1789238750.8467486,
+    "seen": 1789246480.4392064,
+    "ast_hash": "bf895ec4d4e40f5f66f7d31c2a9bd4a7",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/github-and-merge.md": {
+    "mtime": 1789238750.8540483,
+    "seen": 1789246480.4392064,
+    "ast_hash": "cde13df085e4c492aeb7ba298a996d0d",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/hooks.md": {
+    "mtime": 1789238750.8540483,
+    "seen": 1789246480.4392064,
+    "ast_hash": "3f545db6ce646650bb9de588f5512a27",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/query.md": {
+    "mtime": 1789238750.8540483,
+    "seen": 1789246480.4392064,
+    "ast_hash": "3c46f8ad006874260614ed8657d02307",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/transcribe.md": {
+    "mtime": 1789238750.8566022,
+    "seen": 1789246480.4392064,
+    "ast_hash": "67b6a5fa6c0974e18f60db9f8932fbd8",
+    "semantic_hash": ""
+  },
+  ".codex/skills/graphify/references/update.md": {
+    "mtime": 1789238750.8566022,
+    "seen": 1789246480.4392064,
+    "ast_hash": "9378bd03d56baaf78bd738ab3848f142",
+    "semantic_hash": ""
+  },
+  ".github/workflows/ci.yml": {
+    "mtime": 1789090926.9852543,
+    "seen": 1789246480.4392064,
+    "ast_hash": "6b587766a0d74539f60c9f5ad5c12e05",
+    "semantic_hash": ""
+  },
+  "AGENTS.md": {
+    "mtime": 1789238789.0186498,
+    "seen": 1789246480.4392064,
+    "ast_hash": "21ceb6533048be51308e69e7b74a35cf",
+    "semantic_hash": ""
+  },
+  "CODE_OF_CONDUCT.md": {
+    "mtime": 1789227608.46967,
+    "seen": 1789246480.4392064,
+    "ast_hash": "572c168d03e7ddc4374b0fa5d7286856",
+    "semantic_hash": ""
+  },
+  "CONTRIBUTING.md": {
+    "mtime": 1789227608.46967,
+    "seen": 1789246480.4392064,
+    "ast_hash": "8e45331a18118513343fcfa4b898b305",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1789227608.4716806,
+    "seen": 1789246480.4392064,
+    "ast_hash": "66c8b3ceae1c582d1acd7285d0a4adea",
+    "semantic_hash": ""
+  },
+  "docs/architecture.md": {
+    "mtime": 1789227608.478321,
+    "seen": 1789246480.4392064,
+    "ast_hash": "9e2686752ff41bcd73740718fe5ba174",
+    "semantic_hash": ""
+  },
+  "docs/backend-data-pipeline.md": {
+    "mtime": 1789227608.4803343,
+    "seen": 1789246480.4392064,
+    "ast_hash": "66992ce935ffcfefcab0c564a3be0e59",
+    "semantic_hash": ""
+  },
+  "docs/backtesting.md": {
+    "mtime": 1789227608.4823475,
+    "seen": 1789246480.4392064,
+    "ast_hash": "600e77ef259e281bfac9917161d771ba",
+    "semantic_hash": ""
+  },
+  "docs/dashboard.md": {
+    "mtime": 1789227608.4823475,
+    "seen": 1789246480.4392064,
+    "ast_hash": "55a488511869fe6a700df891f4c36828",
+    "semantic_hash": ""
+  },
+  "docs/experience-cache.md": {
+    "mtime": 1789227608.4823475,
+    "seen": 1789246480.4392064,
+    "ast_hash": "5f28bdff51ce71a1cf1eff8fd1a7465b",
+    "semantic_hash": ""
+  },
+  "docs/experiments.md": {
+    "mtime": 1789227608.4823475,
+    "seen": 1789246480.4392064,
+    "ast_hash": "ff262b40c2bab07951aa967d040c638f",
+    "semantic_hash": ""
+  },
+  "docs/extending.md": {
+    "mtime": 1789099299.8539858,
+    "seen": 1789246480.4392064,
+    "ast_hash": "6cd7597464e6fea9a1f4fe5f5377eaef",
+    "semantic_hash": ""
+  },
+  "docs/freqtrade-docker.md": {
+    "mtime": 1789227608.4863248,
+    "seen": 1789246480.4392064,
+    "ast_hash": "9a99270ffdab3ce05a16893fd7884c3c",
+    "semantic_hash": ""
+  },
+  "docs/historical-recurrence.md": {
+    "mtime": 1789227608.4863248,
+    "seen": 1789246480.4392064,
+    "ast_hash": "114971c415550837ea2f134395451923",
+    "semantic_hash": ""
+  },
+  "docs/issue-15-verification.md": {
+    "mtime": 1789227608.4863248,
+    "seen": 1789246480.4392064,
+    "ast_hash": "c66cc7f85b56d6f05eb996e955e780a2",
+    "semantic_hash": ""
+  },
+  "docs/learning-loop.md": {
+    "mtime": 1789227608.4863248,
+    "seen": 1789246480.4392064,
+    "ast_hash": "e81da8370a883b220280115f789a4825",
+    "semantic_hash": ""
+  },
+  "docs/market-data.md": {
+    "mtime": 1789099299.8539858,
+    "seen": 1789246480.4392064,
+    "ast_hash": "1953ca9337b0d948ea045fc3ab46591b",
+    "semantic_hash": ""
+  },
+  "docs/seasonality.md": {
+    "mtime": 1789103384.9975328,
+    "seen": 1789246480.4392064,
+    "ast_hash": "10a7db9be1a702aa3405c6d1947cce14",
+    "semantic_hash": ""
+  },
+  "docs/telemetry-api.md": {
+    "mtime": 1789227608.4907308,
+    "seen": 1789246480.4392064,
+    "ast_hash": "d577fd5b264448bc98f4a18b4608cd7c",
+    "semantic_hash": ""
+  },
+  "integrations/freqtrade/compose.yaml": {
+    "mtime": 1789227608.4936903,
+    "seen": 1789246480.4392064,
+    "ast_hash": "602e2fbe2ab4e2b531763b25fa203b9f",
+    "semantic_hash": ""
+  },
+  "web/index.html": {
+    "mtime": 1789160988.3599265,
+    "seen": 1789246480.4392064,
+    "ast_hash": "59f64e8742c885d57958af35c172992a",
+    "semantic_hash": ""
+  },
+  "web/pnpm-workspace.yaml": {
+    "mtime": 1789160988.3641956,
+    "seen": 1789246480.4392064,
+    "ast_hash": "06a54e4a6922cd3ce23336eff6eae2b1",
+    "semantic_hash": ""
   }
 }
