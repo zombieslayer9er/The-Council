@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from math import isfinite
+from typing import ClassVar
 
 from botnet_council.agents._math import clamp, realized_volatility, timeframe_delta
+from botnet_council.context.models import ContextCapability
 from botnet_council.schemas import (
     ActionIntent,
     AgentContext,
@@ -16,6 +18,12 @@ from botnet_council.schemas import (
 
 @dataclass(frozen=True, slots=True)
 class VolatilityAgent:
+    required_context_capabilities: ClassVar[frozenset[ContextCapability]] = frozenset(
+        {ContextCapability.PRICE_HISTORY}
+    )
+    optional_context_capabilities: ClassVar[frozenset[ContextCapability]] = frozenset(
+        {ContextCapability.REALIZED_VOLATILITY}
+    )
     agent_id: str = "volatility"
     agent_version: str = "1.0"
     signal_type: SignalType = SignalType.VOLATILITY

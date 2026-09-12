@@ -1,5 +1,16 @@
 # Telemetry and read-only API
 
+Blind experiment commands share the local FastAPI host but are outside the telemetry stream.
+Commands live under `/api/control/`; read-only projections live under `/api/experiments`. See
+[experiments.md](experiments.md). The API never projects `ExperimentContext` and gates oracle
+observations until the forecast has been locked.
+
+Experiment control is disabled by default. Set a strong `BOTNET_COUNCIL_CONTROL_TOKEN` and send
+it as a bearer credential to enable command routes. Supplied browser Origins are restricted to
+the localhost allowlist. `/api/health` reports `read_only`, `capabilities`, and
+`command_authentication` from the effective policy rather than describing the service as always
+read-only.
+
 The telemetry package is a one-way projection of the authoritative domain models. The domain
 does not import FastAPI, WebSocket, JSON, or frontend code. `ResearchTradingPipeline` and
 `BacktestEngine` accept an optional transport-neutral publisher; omitting it retains the original
@@ -8,7 +19,7 @@ from financial decisions.
 
 ## Contract
 
-Every event is immutable and uses telemetry schema version `1.1`. Each in-process bus owns an
+Every event is immutable and uses telemetry schema version `1.2`. Each in-process bus owns an
 immutable `stream_id`; `sequence` is assigned monotonically within that generation and is never
 derived from retained-history length. A new process creates a new `stream_id`, so its sequence 1
 must not be compared with a previous generation. `run_id`, `source_snapshot_id`,
@@ -30,6 +41,7 @@ The event types are:
 
 - `pipeline_started`
 - `snapshot_created`
+- `market_context_ready`
 - `agent_started`
 - `agent_signal_emitted`
 - `council_round_started`
@@ -75,7 +87,17 @@ It binds to `127.0.0.1:8000` by default and contains no mutation or trading endp
 - `GET /api/backtests/{run_id}`
 - `GET /api/agents?limit=50&offset=0`
 - `GET /api/agents/{agent_id}`
+- `GET /api/experiences?limit=50&offset=0&symbol=BTC%2FUSD&training_only=false`
+- `GET /api/experiences/{episode_id}`
+- `GET /api/weight-generations`
+- `GET /api/learning-reviews`
 - `WS /ws/events`
+
+Experience and learning reads are enabled only when `BOTNET_COUNCIL_EXPERIENCE_STORE` and
+`BOTNET_COUNCIL_WEIGHT_STORE` point at their respective local stores. Health advertises
+`experience_read` and `learning_read` only when those stores are configured; an unavailable
+store returns 503 rather than an invented empty capability. These routes expose immutable
+evidence and never trigger replay, promotion, rollback, or provider calls.
 
 The socket accepts optional `symbol`, `run_id`, `timeframe`, and comma-separated `event_type`
 query filters. It only streams events published after subscription and cannot trigger work.
@@ -130,25 +152,25 @@ shape changes, a new `api_version`.
 Agent signal:
 
 ```json
-{"event_id":"e-signal","event_type":"agent_signal_emitted","schema_version":"1.1","stream_id":"stream-7","sequence":4,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:00:00Z","source_snapshot_id":"snap-42","correlation_id":"trend","payload":{"signal_id":"sig-42","domain_schema_version":"1.1","agent_id":"trend","agent_version":"1.0","signal_type":"alpha","symbol":"BTC/USD","timeframe":"5m","source_snapshot_id":"snap-42","source_as_of":"2026-09-11T14:00:00Z","forecast_direction":"long","expected_return":0.012,"target_exposure":0.2,"action":"target_exposure","validity":"valid","confidence":0.76,"horizon_bars":3,"generated_at":"2026-09-11T14:00:00Z","expires_at":"2026-09-11T14:15:00Z","rationale":"Fast trend exceeds slow trend.","volatility":null,"metadata":{"fast_window":5,"slow_window":20}}}
+{"event_id":"e-signal","event_type":"agent_signal_emitted","schema_version":"1.2","stream_id":"stream-7","sequence":4,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:00:00Z","source_snapshot_id":"snap-42","correlation_id":"trend","payload":{"signal_id":"sig-42","domain_schema_version":"1.1","agent_id":"trend","agent_version":"1.0","signal_type":"alpha","symbol":"BTC/USD","timeframe":"5m","source_snapshot_id":"snap-42","source_as_of":"2026-09-11T14:00:00Z","forecast_direction":"long","expected_return":0.012,"target_exposure":0.2,"action":"target_exposure","validity":"valid","confidence":0.76,"horizon_bars":3,"generated_at":"2026-09-11T14:00:00Z","expires_at":"2026-09-11T14:15:00Z","rationale":"Fast trend exceeds slow trend.","volatility":null,"metadata":{"fast_window":5,"slow_window":20}}}
 ```
 
 Council decision:
 
 ```json
-{"event_id":"e-council","event_type":"council_decision_emitted","schema_version":"1.1","stream_id":"stream-7","sequence":7,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:00:00Z","source_snapshot_id":"snap-42","correlation_id":"decision-42","payload":{"decision_id":"decision-42","symbol":"BTC/USD","timeframe":"5m","source_snapshot_id":"snap-42","source_as_of":"2026-09-11T14:00:00Z","forecast_direction":"long","expected_return":0.01,"target_exposure":0.15,"action":"target_exposure","conviction":0.6,"confidence":0.72,"decided_at":"2026-09-11T14:00:00Z","expires_at":"2026-09-11T14:15:00Z","rationale":"Weighted alpha consensus.","signal_ids":["sig-42"],"participating_agent_ids":["trend"]}}
+{"event_id":"e-council","event_type":"council_decision_emitted","schema_version":"1.2","stream_id":"stream-7","sequence":7,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:00:00Z","source_snapshot_id":"snap-42","correlation_id":"decision-42","payload":{"decision_id":"decision-42","symbol":"BTC/USD","timeframe":"5m","source_snapshot_id":"snap-42","source_as_of":"2026-09-11T14:00:00Z","forecast_direction":"long","expected_return":0.01,"target_exposure":0.15,"action":"target_exposure","conviction":0.6,"confidence":0.72,"decided_at":"2026-09-11T14:00:00Z","expires_at":"2026-09-11T14:15:00Z","rationale":"Weighted alpha consensus.","signal_ids":["sig-42"],"participating_agent_ids":["trend"]}}
 ```
 
 Risk decision:
 
 ```json
-{"event_id":"e-risk","event_type":"risk_decision_emitted","schema_version":"1.1","stream_id":"stream-7","sequence":10,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:00:00Z","source_snapshot_id":"snap-42","correlation_id":"decision-42","payload":{"risk_status":"approved","approved":true,"vetoed":false,"reasons":["approved by deterministic risk policy"],"policy_check_ids":[],"evaluated_at":"2026-09-11T14:00:00Z","decision_id":"decision-42","source_snapshot_id":"snap-42","approved_order":{"order_id":"order-42","decision_id":"decision-42","source_snapshot_id":"snap-42","symbol":"BTC/USD","timeframe":"5m","side":"buy","quantity":0.05,"reference_price":60000.0,"authorized_at":"2026-09-11T14:00:00Z","earliest_fill_at":"2026-09-11T14:05:00Z","expires_at":"2026-09-11T14:15:00Z","fill_policy":"next_bar_open","max_fee_bps":10.0,"max_slippage_bps":20.0,"reduce_only":false,"paper_only":true},"cash":100000.0,"equity":100000.0,"gross_exposure":0.0,"position_quantity":0.0}}
+{"event_id":"e-risk","event_type":"risk_decision_emitted","schema_version":"1.2","stream_id":"stream-7","sequence":10,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:00:00Z","source_snapshot_id":"snap-42","correlation_id":"decision-42","payload":{"risk_status":"approved","approved":true,"vetoed":false,"reasons":["approved by deterministic risk policy"],"policy_check_ids":[],"evaluated_at":"2026-09-11T14:00:00Z","decision_id":"decision-42","source_snapshot_id":"snap-42","approved_order":{"order_id":"order-42","decision_id":"decision-42","source_snapshot_id":"snap-42","symbol":"BTC/USD","timeframe":"5m","side":"buy","quantity":0.05,"reference_price":60000.0,"authorized_at":"2026-09-11T14:00:00Z","earliest_fill_at":"2026-09-11T14:05:00Z","expires_at":"2026-09-11T14:15:00Z","fill_policy":"next_bar_open","max_fee_bps":10.0,"max_slippage_bps":20.0,"reduce_only":false,"paper_only":true},"cash":100000.0,"equity":100000.0,"gross_exposure":0.0,"position_quantity":0.0}}
 ```
 
 Execution report:
 
 ```json
-{"event_id":"e-fill","event_type":"execution_report_emitted","schema_version":"1.1","stream_id":"stream-7","sequence":13,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:05:00Z","source_snapshot_id":"snap-42","correlation_id":"decision-42","payload":{"order_id":"order-42","decision_id":"decision-42","symbol":"BTC/USD","side":"buy","quantity":0.05,"submitted_at":"2026-09-11T14:00:00Z","filled_at":"2026-09-11T14:05:00Z","fill_price":60006.0,"fees":3.0,"slippage_bps":1.0,"slippage_cost":0.3,"total_costs":3.3,"execution_status":"filled","message":"paper fill at causally valid next-bar open","paper_only":true}}
+{"event_id":"e-fill","event_type":"execution_report_emitted","schema_version":"1.2","stream_id":"stream-7","sequence":13,"run_id":"run-42","symbol":"BTC/USD","timeframe":"5m","emitted_at":"2026-09-11T14:05:00Z","source_snapshot_id":"snap-42","correlation_id":"decision-42","payload":{"order_id":"order-42","decision_id":"decision-42","symbol":"BTC/USD","side":"buy","quantity":0.05,"submitted_at":"2026-09-11T14:00:00Z","filled_at":"2026-09-11T14:05:00Z","fill_price":60006.0,"fees":3.0,"slippage_bps":1.0,"slippage_cost":0.3,"total_costs":3.3,"execution_status":"filled","message":"paper fill at causally valid next-bar open","paper_only":true}}
 ```
 
 ## Current data limitations

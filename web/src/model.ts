@@ -3,6 +3,7 @@ import type {
   CouncilDecisionPayload,
   EventType,
   ExecutionReportPayload,
+  MarketContextPayload,
   PortfolioPayload,
   ReconciliationPayload,
   RiskDecisionPayload,
@@ -19,6 +20,7 @@ export interface RunProjection {
   execution: ExecutionReportPayload | null;
   portfolio: PortfolioPayload | null;
   reconciliation: ReconciliationPayload | null;
+  context: MarketContextPayload | null;
 }
 
 export function project(events: readonly TelemetryEvent[]): RunProjection {
@@ -34,6 +36,7 @@ export function project(events: readonly TelemetryEvent[]): RunProjection {
     execution: lastPayload<ExecutionReportPayload>(ordered, 'execution_report_emitted'),
     portfolio: lastPayload<PortfolioPayload>(ordered, 'portfolio_updated'),
     reconciliation: lastPayload<ReconciliationPayload>(ordered, 'reconciliation_completed'),
+    context: lastPayload<MarketContextPayload>(ordered, 'market_context_ready'),
   };
 }
 

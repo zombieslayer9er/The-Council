@@ -1,0 +1,33 @@
+{
+  "instruments": ["BTC/USD"],
+  "timeframe": "5m",
+  "start": "2026-01-01T00:00:00Z",
+  "end": "2026-02-01T00:00:00Z",
+  "starting_capital": 10000.0,
+  "fee_ratio": 0.0026,
+  "order_types": {
+    "entry": "market",
+    "exit": "market",
+    "emergency_exit": "market",
+    "force_entry": "market",
+    "force_exit": "market",
+    "stoploss": "market"
+  },
+  "strategy": {
+    "adapter_id": "council-decision-signals",
+    "adapter_version": "1.3",
+    "strategy_name": "CouncilSignalStrategy",
+    "strategy_path": "integrations/freqtrade/strategies",
+    "signal_artifact": "integrations/freqtrade/user_data/signals/council-signals.json"
+  },
+  "context_configuration": {},
+  "seed": 0,
+  "dataset_id": "replace-with-exact-dataset-identity",
+  "data_directory": "integrations/freqtrade/user_data/data/kraken",
+  "artifact_directory": "backtest-results/freqtrade",
+  "engine_configuration": {
+    "exchange_name": "kraken",
+    "stake_currency": "USD",
+    "max_open_trades": 1
+  }
+}

@@ -1,0 +1,46 @@
+name: botnet-council-freqtrade
+
+services:
+  freqtrade:
+    image: ${FREQTRADE_IMAGE:-freqtradeorg/freqtrade:2026.8}
+    pull_policy: missing
+    entrypoint: ["freqtrade"]
+    working_dir: /freqtrade
+    restart: "no"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - type: bind
+        source: ${BOTNET_COUNCIL_WORKSPACE:?set BOTNET_COUNCIL_WORKSPACE}
+        target: /workspace
+      - type: bind
+        source: ${BOTNET_COUNCIL_WORKSPACE:?set BOTNET_COUNCIL_WORKSPACE}/integrations/freqtrade/user_data
+        target: /freqtrade/user_data
+
+  freqtrade-data:
+    image: ${FREQTRADE_IMAGE:-freqtradeorg/freqtrade:2026.8}
+    pull_policy: missing
+    entrypoint: ["freqtrade"]
+    working_dir: /freqtrade
+    restart: "no"
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - type: bind
+        source: ${BOTNET_COUNCIL_WORKSPACE:?set BOTNET_COUNCIL_WORKSPACE}
+        target: /workspace
+      - type: bind
+        source: ${BOTNET_COUNCIL_WORKSPACE:?set BOTNET_COUNCIL_WORKSPACE}/integrations/freqtrade/user_data
+        target: /freqtrade/user_data
