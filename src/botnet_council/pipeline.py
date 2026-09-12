@@ -57,6 +57,7 @@ from botnet_council.telemetry.serializers import (
 from botnet_council.telemetry.serializers import (
     execution_report as serialize_execution_report,
 )
+from botnet_council.telemetry.serializers import market_context as serialize_market_context
 from botnet_council.telemetry.serializers import (
     portfolio as serialize_portfolio,
 )
@@ -162,6 +163,16 @@ class ResearchTradingPipeline:
                 )
             else:
                 market_context = self._context_service.enrich(snapshot, context_request)
+            self._emit(
+                EventType.MARKET_CONTEXT_READY,
+                run_id,
+                evaluated_at,
+                lambda: serialize_market_context(market_context),
+                symbol=symbol,
+                timeframe=timeframe,
+                source_snapshot_id=snapshot.snapshot_id,
+                correlation_id=market_context.context_id,
+            )
             collected: list[AgentSignal] = []
             stage = "agents"
             for agent in self._agents:

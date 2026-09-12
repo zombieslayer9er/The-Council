@@ -268,6 +268,8 @@ def test_teacher_rejects_overfit_proposal_and_profile_store_cannot_promote_it(
     with pytest.raises(PermissionError, match="rejected"):
         store.promote(current, proposal, result)
     assert store.active() == current
+    assert store.list_reviews()[0].proposal == proposal
+    assert store.list_reviews()[0].result == result
 
 
 def test_only_accepted_teacher_result_creates_generation_and_rollback_preserves_history(
@@ -293,6 +295,8 @@ def test_only_accepted_teacher_result_creates_generation_and_rollback_preserves_
     assert store.rollback("weights-v0000") == current
     assert store.active() == current
     assert store.get("weights-v0001") == promoted
+    assert store.list_reviews()[0].proposal == proposal
+    assert store.list_reviews()[0].result == result
 
 
 def test_teacher_enforces_temporal_holdout_and_ground_truth_availability() -> None:

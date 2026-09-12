@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from pathlib import Path
 from threading import Thread
 
 import pytest
@@ -7,6 +8,8 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from botnet_council.api.app import _enqueue_or_lag, create_app
+from botnet_council.experience import ExperienceStore
+from botnet_council.learning import WeightProfileStore
 from botnet_council.telemetry.contracts import (
     BacktestPayload,
     EventType,
@@ -65,6 +68,38 @@ def test_empty_state_matches_the_public_response_contract() -> None:
     assert response.json()["sequence_watermark"] == 0
 
 
+def test_optional_research_stores_are_reported_and_exposed_read_only(
+    tmp_path: Path,
+) -> None:
+    experiences = ExperienceStore(tmp_path / "experiences")
+    weights = WeightProfileStore(tmp_path / "weights")
+    client = TestClient(
+        create_app(
+            InMemoryEventBus(), experience_store=experiences, weight_store=weights
+        )
+    )
+
+    health = client.get("/api/health").json()
+    assert health["read_only"] is True
+    assert health["capabilities"] == [
+        "telemetry_read",
+        "experiment_read",
+        "experience_read",
+        "learning_read",
+    ]
+    assert client.get("/api/experiences").json()["items"] == []
+    assert client.get("/api/weight-generations").json()["items"] == []
+    assert client.get("/api/learning-reviews").json()["items"] == []
+
+
+def test_unconfigured_research_stores_fail_explicitly() -> None:
+    client = TestClient(create_app(InMemoryEventBus()))
+
+    assert client.get("/api/experiences").status_code == 503
+    assert client.get("/api/weight-generations").status_code == 503
+    assert client.get("/api/learning-reviews").status_code == 503
+
+
 def test_websocket_serializes_envelope_and_applies_filters() -> None:
     bus = InMemoryEventBus()
     client = TestClient(create_app(bus))
@@ -75,7 +110,7 @@ def test_websocket_serializes_envelope_and_applies_filters() -> None:
         thread.join()
 
     assert message["event_type"] == "pipeline_started"
-    assert message["schema_version"] == "1.1"
+    assert message["schema_version"] == "1.2"
     assert message["stream_id"] == bus.stream_id
     assert message["symbol"] == "TEST/USD"
     assert message["sequence"] == 1

@@ -1,26 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
-  AgentSummary,
   AgentSignalPayload,
   HealthResponse,
   RunSummary,
   StateResponse,
   TelemetryEvent,
 } from '../../contracts/typescript/types.generated';
-import { bootstrap, loadRun, openEventStream } from './api';
-import { createDemoCouncilRun } from './demoCouncil';
+import { bootstrap, loadResearch, loadRun, openEventStream, type ResearchData } from './api';
 import { ContractError } from './validate';
 import { applyBootstrap, beginResync, bufferEvent, emptyLiveState, failLive, type ConnectionStatus } from './liveState';
 import { RequestGate } from './requestGate';
 import { agentLabel, money, percent, project, shortTime } from './model';
+import { EvidenceView, LearningView, OutcomesView } from './researchViews';
 
-type View = 'live' | 'history' | 'backtests' | 'agents' | 'portfolio' | 'system';
+type View = 'live' | 'evidence' | 'learning' | 'outcomes' | 'history' | 'backtests' | 'portfolio' | 'system';
 
 const NAV: { key: View; label: string; icon: string }[] = [
   { key: 'live', label: 'Live Council', icon: '⬡' },
+  { key: 'evidence', label: 'Evidence', icon: '⊛' },
+  { key: 'learning', label: 'Learning', icon: '⌁' },
+  { key: 'outcomes', label: 'Outcomes', icon: '◎' },
   { key: 'history', label: 'History', icon: '◫' },
   { key: 'backtests', label: 'Backtests', icon: '◇' },
-  { key: 'agents', label: 'Agents', icon: '⊛' },
   { key: 'portfolio', label: 'Portfolio', icon: '◉' },
   { key: 'system', label: 'System', icon: '⊡' },
 ];
@@ -33,14 +34,14 @@ export default function App() {
   const [replayEvents, setReplayEvents] = useState<readonly TelemetryEvent[]>([]);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
   const [loadingRun, setLoadingRun] = useState(false);
-  const [runningCouncil, setRunningCouncil] = useState(false);
-  const demoMode = useRef(false);
+  const [research, setResearch] = useState<ResearchData | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
   const bootstrapGate = useRef(new RequestGate());
+  const researchGate = useRef(new RequestGate());
   const replayGate = useRef(new RequestGate());
   const hasBootstrapped = useRef(false);
 
   const resync = useCallback(async (initial = false) => {
-    demoMode.current = false;
     const request = bootstrapGate.current.begin();
     setLive((current) => beginResync(current, initial));
     try {
@@ -48,6 +49,17 @@ export default function App() {
       if (!bootstrapGate.current.isCurrent(request.generation)) return;
       setHealth(data.health);
       setLive((current) => applyBootstrap(current, data.bootstrap));
+      const researchRequest = researchGate.current.begin();
+      void loadResearch(data.health.capabilities, researchRequest.signal).then((value) => {
+        if (researchGate.current.isCurrent(researchRequest.generation)) {
+          setResearch(value);
+          setResearchError(null);
+        }
+      }).catch((cause: unknown) => {
+        if (!researchRequest.signal.aborted && researchGate.current.isCurrent(researchRequest.generation)) {
+          setResearchError(cause instanceof Error ? cause.message : 'Unable to load research evidence.');
+        }
+      });
       hasBootstrapped.current = true;
     } catch (cause) {
       if (request.signal.aborted || !bootstrapGate.current.isCurrent(request.generation)) return;
@@ -63,8 +75,8 @@ export default function App() {
       if (current.status === 'live' && next.status === 'resynchronizing') queueMicrotask(() => void resync(false));
       return next;
     }),
-    onDisconnect: () => { if (!demoMode.current) setLive((current) => failLive(current, 'disconnected', 'Telemetry connection lost.')); },
-    onMalformed: (message) => { if (!demoMode.current) setLive((current) => failLive(current, 'malformed', message)); },
+    onDisconnect: () => setLive((current) => failLive(current, 'disconnected', 'Telemetry connection lost.')),
+    onMalformed: (message) => setLive((current) => failLive(current, 'malformed', message)),
   }), [resync]);
   useEffect(() => {
     const handler = () => setView(viewFromHash());
@@ -82,18 +94,6 @@ export default function App() {
     } catch (cause) {
       if (!request.signal.aborted && replayGate.current.isCurrent(request.generation)) setLive((current) => ({ ...current, error: cause instanceof Error ? cause.message : 'Unable to load run.' }));
     } finally { if (replayGate.current.isCurrent(request.generation)) setLoadingRun(false); }
-  };
-  const runCouncil = async () => {
-    if (runningCouncil) return;
-    demoMode.current = true;
-    setRunningCouncil(true);
-    await new Promise((resolve) => window.setTimeout(resolve, 450));
-    const demo = createDemoCouncilRun();
-    setHealth(demo.health);
-    setLive((current) => ({ ...applyBootstrap(current, demo.bootstrap), status: 'demo' }));
-    setView('live');
-    location.hash = 'live';
-    setRunningCouncil(false);
   };
   const data = useMemo(() => {
     const projected = project(live.events);
@@ -135,18 +135,20 @@ export default function App() {
           </div>
           <div className="top-actions">
             <span className="sequence">{live.streamId ? `GEN ${live.streamId.slice(0, 8)} · ` : ''}SEQ {live.watermark.toLocaleString()}</span>
-            <button className="primary" disabled={runningCouncil} onClick={() => void runCouncil()}>{runningCouncil ? 'Running council…' : '▶ Run Council'}</button>
             <button className="secondary" onClick={() => void resync(false)}>↻ Resync</button>
           </div>
         </header>
 
         {live.error && <div className="error-banner" role="alert"><span>{live.error}</span><button onClick={() => void resync(false)}>Retry</button></div>}
+        {researchError && <div className="error-banner research-error" role="status"><span>Research evidence: {researchError}</span><button onClick={() => void resync(false)}>Retry</button></div>}
 
         <div className="content">
-          {view === 'live' && <LiveView data={data} connection={live.status} loading={live.status === 'bootstrapping' || live.status === 'resynchronizing'} onRun={runCouncil} running={runningCouncil} />}
+          {view === 'live' && <LiveView data={data} connection={live.status} loading={live.status === 'bootstrapping' || live.status === 'resynchronizing'} />}
+          {view === 'evidence' && <EvidenceView context={data.context} signals={data.signals} />}
+          {view === 'learning' && <LearningView research={research} />}
+          {view === 'outcomes' && <OutcomesView research={research} />}
           {view === 'history' && <HistoryView runs={live.runs} selected={selectedRun} events={replayEvents} onSelect={selectRun} loading={loadingRun} />}
           {view === 'backtests' && <BacktestsView runs={live.runs} />}
-          {view === 'agents' && <AgentsView agents={live.agents} signals={data.signals} />}
           {view === 'portfolio' && <PortfolioView portfolio={data.portfolio ?? live.state?.latest_portfolio ?? null} />}
           {view === 'system' && <SystemView health={health} state={live.state} events={live.events} connection={live.status} />}
         </div>
@@ -155,7 +157,7 @@ export default function App() {
   );
 }
 
-function LiveView({ data, connection, loading, onRun, running }: { data: ReturnType<typeof project>; connection: ConnectionStatus; loading: boolean; onRun: () => Promise<void>; running: boolean }) {
+function LiveView({ data, connection, loading }: { data: ReturnType<typeof project>; connection: ConnectionStatus; loading: boolean }) {
   const { snapshot, decision, signals, risk, execution, reconciliation } = data;
   const latest = snapshot?.bars.at(-1);
   const previous = snapshot?.bars.at(-2);
@@ -165,7 +167,7 @@ function LiveView({ data, connection, loading, onRun, running }: { data: ReturnT
 
   if (!data.events.length && !loading) {
     const authoritative = connection === 'live';
-    return <EmptyState title={authoritative ? 'Awaiting the first council run' : 'Run the council demonstration'} text={authoritative ? 'The console has an authoritative read-only snapshot. Run the deterministic browser demonstration or start a local pipeline to populate this workspace.' : 'The local telemetry API is unavailable. The browser demonstration uses generated market data and paper-only execution to exercise this interface safely.'} action={<button className="primary large" disabled={running} onClick={() => void onRun()}>{running ? 'Running council…' : '▶ Run Council'}</button>} />;
+    return <EmptyState title={authoritative ? 'Awaiting the first council run' : 'Telemetry API unavailable'} text={authoritative ? 'The console is connected to an authoritative read-only snapshot. Start a configured local pipeline to populate this workspace.' : 'Reconnect the local API to inspect deterministic telemetry. This interface never substitutes generated browser data.'} />;
   }
   return <>
     <section className="market-strip panel">
@@ -246,16 +248,6 @@ function BacktestsView({ runs }: { runs: readonly RunSummary[] }) {
   </>;
 }
 
-function AgentsView({ agents, signals }: { agents: readonly AgentSummary[]; signals: readonly AgentSignalPayload[] }) {
-  const current = new Map(signals.map((signal) => [signal.agent_id, signal]));
-  return <><SectionTitle title="Specialist registry" subtitle="Identity comes from emitted contracts; display labels are presentation metadata." />
-    <div className="cards">{agents.map((agent) => {
-      const signal = current.get(agent.agent_id) ?? agent.latest_signal.payload as AgentSignalPayload;
-      return <AgentCard key={agent.agent_id} signal={signal} expanded />;
-    })}{!agents.length && <EmptyState title="No specialist telemetry" text="Agent cards appear after each specialist emits its first signal." />}</div>
-  </>;
-}
-
 function PortfolioView({ portfolio }: { portfolio: StateResponse['latest_portfolio'] }) {
   if (!portfolio) return <EmptyState title="Portfolio unavailable" text="The API has not received a valued portfolio state. No exposure or P&L is inferred from orders." />;
   return <><section className="portfolio-hero panel"><div><p className="eyebrow">Marked account</p><h2>{money(portfolio.equity)}</h2><span>Valued {shortTime(portfolio.valued_at)}</span></div><Metric label="Cash" value={money(portfolio.cash)} /><Metric label="Gross exposure" value={money(portfolio.gross_exposure)} /><Metric label="Unrealized P&L" value={money(portfolio.unrealized_pnl)} tone={portfolio.unrealized_pnl >= 0 ? 'good' : 'bad'} /></section>
@@ -264,19 +256,18 @@ function PortfolioView({ portfolio }: { portfolio: StateResponse['latest_portfol
 }
 
 function SystemView({ health, state, events, connection }: { health: HealthResponse | null; state: StateResponse | null; events: readonly TelemetryEvent[]; connection: ConnectionStatus }) {
-  return <><section className="system-grid"><div className="panel summary-card"><p className="eyebrow">Service</p><h3>{health?.service ?? 'Telemetry API'}</h3><Detail label="Connection" value={connection.toUpperCase()} /><Detail label="API contract" value={health?.api_version ?? '—'} /><Detail label="Backend" value={health?.backend_version ?? '—'} /><Detail label="Access" value={health?.read_only ? 'READ ONLY' : 'Unknown'} /></div><div className="panel summary-card"><p className="eyebrow">Event bus</p><h3>{(state?.event_count ?? 0).toLocaleString()} events</h3><Detail label="Generation" value={state?.stream_id ?? '—'} /><Detail label="Last sequence" value={String(state?.sequence_watermark ?? 0)} /><Detail label="Active runs" value={String(state?.active_runs.length ?? 0)} /><Detail label="Local replay" value={`${events.length} events`} /></div></section>
+  return <><section className="system-grid"><div className="panel summary-card"><p className="eyebrow">Service</p><h3>{health?.service ?? 'Telemetry API'}</h3><Detail label="Connection" value={connection.toUpperCase()} /><Detail label="API contract" value={health?.api_version ?? '—'} /><Detail label="Backend" value={health?.backend_version ?? '—'} /><Detail label="Access" value={health ? (health.read_only ? 'READ ONLY' : 'AUTHENTICATED CONTROL') : '—'} /></div><div className="panel summary-card"><p className="eyebrow">Event bus</p><h3>{(state?.event_count ?? 0).toLocaleString()} events</h3><Detail label="Generation" value={state?.stream_id ?? '—'} /><Detail label="Last sequence" value={String(state?.sequence_watermark ?? 0)} /><Detail label="Active runs" value={String(state?.active_runs.length ?? 0)} /><Detail label="Local replay" value={`${events.length} events`} /></div></section>
     <section className="panel event-ledger"><PanelTitle kicker="Recent activity" title="Telemetry stream" extra="NEWEST FIRST" /><div className="timeline">{[...events].reverse().slice(0, 50).map((event) => <EventRow key={event.event_id} event={event} />)}{!events.length && <InlineEmpty text="No events received." />}</div></section>
   </>;
 }
 
-function AgentCard({ signal, advisory = false, expanded = false }: { signal: AgentSignalPayload; advisory?: boolean; expanded?: boolean }) {
+function AgentCard({ signal, advisory = false }: { signal: AgentSignalPayload; advisory?: boolean }) {
   return <article className={`panel agent-card ${advisory ? 'advisory' : ''}`}>
     <div className="agent-head"><div className="agent-icon">{signal.agent_id.slice(0, 2).toUpperCase()}</div><div><h3>{agentLabel(signal.agent_id)}</h3><span>{signal.agent_id} · v{signal.agent_version}</span></div><span className={`badge ${signal.signal_type}`}>{signal.signal_type}</span></div>
     <div className="agent-state"><Direction direction={signal.forecast_direction} /><span className={`badge ${signal.validity}`}>{signal.validity.replace('_', ' ')}</span></div>
     <Meter label="Confidence" value={signal.confidence} />
     <div className="metric-grid"><Metric label="Expected return" value={percent(signal.expected_return, true)} /><Metric label="Target exposure" value={percent(signal.target_exposure, true)} /></div>
     <p className="rationale">{signal.rationale}</p>
-    {expanded && <div className="detail-list"><Detail label="Signal ID" value={signal.signal_id} /><Detail label="Snapshot" value={signal.source_snapshot_id} /><Detail label="Expires" value={shortTime(signal.expires_at)} /><Detail label="Action" value={signal.action.replaceAll('_', ' ')} /></div>}
   </article>;
 }
 

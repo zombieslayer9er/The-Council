@@ -19,6 +19,7 @@ from pydantic import ValidationError
 
 from botnet_council import __version__
 from botnet_council.council import CouncilConfig
+from botnet_council.experience import EpisodeQuery, ExperienceStore
 from botnet_council.experiments import (
     ExperimentRequest,
     ExperimentService,
@@ -26,6 +27,7 @@ from botnet_council.experiments import (
     RandomExperimentRequest,
 )
 from botnet_council.experiments.models import ExperimentAgentConfig
+from botnet_council.learning import WeightProfileStore
 from botnet_council.market_data import (
     CachedHistoricalProvider,
     KrakenHistoricalProvider,
@@ -41,6 +43,8 @@ from botnet_council.telemetry.contracts import (
     ErrorResponse,
     EventPage,
     EventType,
+    ExperiencePage,
+    ExperienceResponse,
     ExperimentBatchResponse,
     ExperimentCreateRequest,
     ExperimentEvaluationResponse,
@@ -49,6 +53,7 @@ from botnet_council.telemetry.contracts import (
     ExperimentPage,
     ExperimentResponse,
     HealthResponse,
+    LearningReviewPage,
     PortfolioResponse,
     RandomExperimentCreateRequest,
     RunDetailResponse,
@@ -57,19 +62,26 @@ from botnet_council.telemetry.contracts import (
     SnapshotResponse,
     StateResponse,
     TelemetryEvent,
+    WeightGenerationPage,
 )
 from botnet_council.telemetry.publisher import EventBusSnapshot, EventFilter, InMemoryEventBus
 from botnet_council.telemetry.serializers import (
+    experience_detail,
+    experience_summary,
     experiment_batch,
     experiment_evaluation,
     experiment_forecast,
     experiment_oracle,
     experiment_summary,
+    learning_review,
+    weight_generation,
 )
 
 DEFAULT_WEBSOCKET_QUEUE_LIMIT = 256
 MINIMUM_CONTROL_TOKEN_LENGTH = 32
 CONTROL_TOKEN_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_CONTROL_TOKEN"
+EXPERIENCE_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_EXPERIENCE_STORE"
+WEIGHT_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_WEIGHT_STORE"
 CONTROL_BEARER = HTTPBearer(auto_error=False)
 ALLOWED_BROWSER_ORIGINS = frozenset(
     {
@@ -86,12 +98,16 @@ def create_app(
     *,
     websocket_queue_limit: int = DEFAULT_WEBSOCKET_QUEUE_LIMIT,
     experiment_service: ExperimentService | None = None,
+    experience_store: ExperienceStore | None = None,
+    weight_store: WeightProfileStore | None = None,
     command_token: str | None = None,
 ) -> FastAPI:
     if websocket_queue_limit < 1:
         raise ValueError("websocket_queue_limit must be positive")
     telemetry = bus or InMemoryEventBus()
     experiments = experiment_service or _default_experiment_service()
+    experiences = experience_store or _configured_experience_store()
+    weights = weight_store or _configured_weight_store()
     control_token = command_token or os.environ.get(CONTROL_TOKEN_ENVIRONMENT_VARIABLE)
     if control_token is not None and len(control_token) < MINIMUM_CONTROL_TOKEN_LENGTH:
         raise ValueError("command_token must contain at least 32 characters")
@@ -103,6 +119,8 @@ def create_app(
     )
     app.state.telemetry = telemetry
     app.state.experiments = experiments
+    app.state.experiences = experiences
+    app.state.weights = weights
 
     async def require_command_access(
         request: Request,
@@ -180,6 +198,8 @@ def create_app(
             "capabilities": (
                 "telemetry_read",
                 "experiment_read",
+                *(("experience_read",) if experiences is not None else ()),
+                *(("learning_read",) if weights is not None else ()),
                 *(("experiment_control",) if control_enabled else ()),
             ),
             "command_authentication": "bearer_token" if control_enabled else "disabled",
@@ -370,6 +390,80 @@ def create_app(
             "signals": items,
         }
 
+    @app.get(
+        "/api/experiences",
+        response_model=ExperiencePage,
+        responses={503: {"model": ErrorResponse}},
+    )
+    async def experience_episodes(
+        limit: int = Query(50, ge=1, le=500),
+        offset: int = Query(0, ge=0),
+        symbol: str | None = None,
+        training_only: bool = False,
+    ) -> dict[str, Any]:
+        if experiences is None:
+            raise HTTPException(503, "experience store is not configured")
+        values = experiences.query(
+            EpisodeQuery(symbol=symbol, training_only=training_only)
+        )
+        summaries = tuple(experience_summary(item) for item in values)
+        return {
+            "api_version": API_VERSION,
+            "items": summaries[offset : offset + limit],
+            "total": len(summaries),
+            "limit": limit,
+            "offset": offset,
+        }
+
+    @app.get(
+        "/api/experiences/{episode_id}",
+        response_model=ExperienceResponse,
+        responses={404: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
+    )
+    async def experience_episode(episode_id: str) -> dict[str, Any]:
+        if experiences is None:
+            raise HTTPException(503, "experience store is not configured")
+        try:
+            value = experiences.get(episode_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "episode": experience_detail(value)}
+
+    @app.get(
+        "/api/weight-generations",
+        response_model=WeightGenerationPage,
+        responses={503: {"model": ErrorResponse}},
+    )
+    async def weight_generations() -> dict[str, Any]:
+        if weights is None:
+            raise HTTPException(503, "weight profile store is not configured")
+        values = weights.list()
+        try:
+            active_generation_id = weights.active().generation_id
+        except LookupError:
+            active_generation_id = None
+        return {
+            "api_version": API_VERSION,
+            "active_generation_id": active_generation_id,
+            "items": tuple(weight_generation(item) for item in values),
+            "total": len(values),
+        }
+
+    @app.get(
+        "/api/learning-reviews",
+        response_model=LearningReviewPage,
+        responses={503: {"model": ErrorResponse}},
+    )
+    async def learning_reviews() -> dict[str, Any]:
+        if weights is None:
+            raise HTTPException(503, "weight profile store is not configured")
+        values = weights.list_reviews()
+        return {
+            "api_version": API_VERSION,
+            "items": tuple(learning_review(item) for item in values),
+            "total": len(values),
+        }
+
     @app.post(
         "/api/control/experiments",
         response_model=ExperimentResponse,
@@ -546,6 +640,16 @@ def _default_experiment_service() -> ExperimentService:
         KrakenHistoricalProvider(), ParquetMarketDataCache(Path(".market-data-cache"))
     )
     return ExperimentService(provider, FileExperimentRepository(Path("experiment-results")))
+
+
+def _configured_experience_store() -> ExperienceStore | None:
+    root = os.environ.get(EXPERIENCE_STORE_ENVIRONMENT_VARIABLE)
+    return None if root is None else ExperienceStore(Path(root))
+
+
+def _configured_weight_store() -> WeightProfileStore | None:
+    root = os.environ.get(WEIGHT_STORE_ENVIRONMENT_VARIABLE)
+    return None if root is None else WeightProfileStore(Path(root))
 
 
 def _experiment_request(body: ExperimentCreateRequest) -> ExperimentRequest:

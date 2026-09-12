@@ -66,7 +66,7 @@ def test_event_schema_is_versioned_immutable_and_requires_utc(as_of: datetime) -
         payload=StagePayload(stage="pipeline"),
     )
 
-    assert value.schema_version == "1.1"
+    assert value.schema_version == "1.2"
     assert value.model_dump(mode="json")["emitted_at"].endswith("Z")
     with pytest.raises(ValidationError):
         TelemetryEvent(
@@ -130,6 +130,9 @@ def test_pipeline_emits_approved_execution_chain_without_changing_result(
     types = [item.event_type for item in bus.list_events()]
     assert types[0] is EventType.PIPELINE_STARTED
     assert types[-1] is EventType.PIPELINE_COMPLETED
+    assert types.index(EventType.SNAPSHOT_CREATED) < types.index(
+        EventType.MARKET_CONTEXT_READY
+    ) < types.index(EventType.AGENT_SIGNAL_EMITTED)
     assert EventType.ORDER_APPROVED in types
     assert EventType.EXECUTION_REPORT_EMITTED in types
     assert EventType.RECONCILIATION_COMPLETED in types

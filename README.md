@@ -118,7 +118,11 @@ pnpm dev
 
 Open `http://127.0.0.1:5173`. Vite proxies the versioned REST API and read-only
 WebSocket stream to `127.0.0.1:8000`. The dashboard never submits orders or mutates
-domain state; it renders only telemetry emitted by the API process.
+domain state; it renders only telemetry and immutable research evidence emitted by the API
+process. Evidence, Historical Recurrence analogues, weight-generation comparisons, blind
+experiment outcomes, and frozen experience replay are described in
+[`docs/dashboard.md`](docs/dashboard.md). Set `BOTNET_COUNCIL_EXPERIENCE_STORE` and
+`BOTNET_COUNCIL_WEIGHT_STORE` on the API process to expose the optional read-only stores.
 
 ## Extension points
 

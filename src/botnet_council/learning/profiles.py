@@ -12,6 +12,7 @@ from uuid import uuid4
 from botnet_council.backtest.models import to_jsonable
 from botnet_council.learning.models import (
     AdaptiveWeight,
+    LearningReview,
     ScopedAgentWeight,
     TeacherDecision,
     TeacherResult,
@@ -25,9 +26,11 @@ class WeightProfileStore:
     def __init__(self, root: str | Path) -> None:
         self._root = Path(root)
         self._profiles = self._root / "profiles"
+        self._reviews = self._root / "reviews"
         self._active = self._root / "active-generation.txt"
         self._lock = RLock()
         self._profiles.mkdir(parents=True, exist_ok=True)
+        self._reviews.mkdir(parents=True, exist_ok=True)
 
     def initialize(self, profile: WeightProfile) -> WeightProfile:
         if profile.generation != 0 or profile.parent_generation_id is not None:
@@ -86,6 +89,7 @@ class WeightProfileStore:
                 raise ValueError("Teacher result targets another base generation")
             if result.proposal_id != proposal.proposal_id:
                 raise ValueError("Teacher result belongs to another proposal")
+            self.record_review(proposal, result)
             if result.decision is TeacherDecision.REJECT:
                 raise PermissionError("a rejected proposal cannot create a generation")
             profile = apply_changes(
@@ -97,6 +101,36 @@ class WeightProfileStore:
             self._write_profile(profile)
             self._write_active(profile.generation_id)
             return profile
+
+    def record_review(
+        self, proposal: WeightProposal, result: TeacherResult
+    ) -> LearningReview:
+        review = LearningReview(proposal=proposal, result=result)
+        path = self._reviews / f"{result.result_id}.json"
+        content = json.dumps(
+            to_jsonable(review), sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ) + "\n"
+        with self._lock:
+            if path.exists():
+                if path.read_text(encoding="utf-8") != content:
+                    raise FileExistsError("stored learning review conflicts with immutable content")
+                return review
+            temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+            temporary.write_text(content, encoding="utf-8")
+            temporary.replace(path)
+        return review
+
+    def list_reviews(self) -> tuple[LearningReview, ...]:
+        return tuple(
+            sorted(
+                (
+                    LearningReview.model_validate_json(path.read_text(encoding="utf-8"))
+                    for path in self._reviews.glob("*.json")
+                ),
+                key=lambda item: (item.result.evaluated_at, item.result.result_id),
+                reverse=True,
+            )
+        )
 
     def rollback(self, generation_id: str) -> WeightProfile:
         with self._lock:

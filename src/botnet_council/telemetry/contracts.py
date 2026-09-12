@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 API_VERSION = "v1"
 
 
@@ -28,6 +28,7 @@ class PublicModel(BaseModel):
 class EventType(StrEnum):
     PIPELINE_STARTED = "pipeline_started"
     SNAPSHOT_CREATED = "snapshot_created"
+    MARKET_CONTEXT_READY = "market_context_ready"
     AGENT_STARTED = "agent_started"
     AGENT_SIGNAL_EMITTED = "agent_signal_emitted"
     COUNCIL_ROUND_STARTED = "council_round_started"
@@ -88,6 +89,40 @@ class SnapshotPayload(PublicModel):
     latest_available_at: datetime
     bars: tuple[MarketBarPayload, ...]
     provenance: SnapshotProvenancePayload | None = None
+
+
+class ContextProvenancePayload(PublicModel):
+    provider: str
+    source_id: str
+    observed_at: datetime
+    period_start: datetime | None
+    period_end: datetime | None
+    published_at: datetime | None
+    provider_available_at: datetime
+    ingested_at: datetime
+    vintage: str
+    revision: str | None
+    source_version: str
+
+
+class ContextDatumPayload(PublicModel):
+    capability: str
+    instrument: str
+    name: str
+    value: Any
+    unit: str
+    provenance: ContextProvenancePayload
+
+
+class MarketContextPayload(PublicModel):
+    context_id: str
+    snapshot_id: str
+    as_of: datetime
+    data: tuple[ContextDatumPayload, ...]
+    requested_required: tuple[str, ...]
+    requested_optional: tuple[str, ...]
+    missing_required: tuple[str, ...]
+    missing_optional: tuple[str, ...]
 
 
 class VolatilityPayload(PublicModel):
@@ -251,6 +286,7 @@ class BacktestPayload(PublicModel):
 
 TelemetryPayload = Annotated[
     SnapshotPayload
+    | MarketContextPayload
     | AgentSignalPayload
     | CouncilDecisionPayload
     | RiskDecisionPayload
@@ -267,6 +303,7 @@ TelemetryPayload = Annotated[
 
 _PAYLOAD_TYPES: dict[EventType, type[PublicModel]] = {
     EventType.SNAPSHOT_CREATED: SnapshotPayload,
+    EventType.MARKET_CONTEXT_READY: MarketContextPayload,
     EventType.AGENT_SIGNAL_EMITTED: AgentSignalPayload,
     EventType.COUNCIL_DECISION_EMITTED: CouncilDecisionPayload,
     EventType.RISK_DECISION_EMITTED: RiskDecisionPayload,
@@ -285,7 +322,7 @@ _PAYLOAD_TYPES: dict[EventType, type[PublicModel]] = {
 class TelemetryEvent(PublicModel):
     event_id: str
     event_type: EventType
-    schema_version: Literal["1.1"] = "1.1"
+    schema_version: Literal["1.2"] = "1.2"
     stream_id: str | None = None
     sequence: int = Field(default=0, ge=0)
     run_id: str
@@ -340,7 +377,14 @@ class HealthResponse(PublicModel):
     backend_version: str
     read_only: bool
     capabilities: tuple[
-        Literal["telemetry_read", "experiment_read", "experiment_control"], ...
+        Literal[
+            "telemetry_read",
+            "experiment_read",
+            "experience_read",
+            "learning_read",
+            "experiment_control",
+        ],
+        ...,
     ]
     command_authentication: Literal["disabled", "bearer_token"]
 
@@ -436,6 +480,138 @@ class BootstrapResponse(PublicModel):
     runs: tuple[RunSummary, ...]
     agents: tuple[AgentSummary, ...]
     events: tuple[TelemetryEvent, ...]
+
+
+class AppliedWeightPayload(PublicModel):
+    agent_id: str
+    weight: float
+
+
+class ExperienceSummaryPayload(PublicModel):
+    episode_id: str
+    symbol: str
+    timeframe: str
+    decision_timestamp: datetime
+    weight_generation_id: str
+    regime: str | None
+    training_eligible: bool
+    forecast_direction: str
+    expected_return: float | None
+    realized_return: float | None
+    directional_correctness: bool | None
+    maximum_adverse_excursion: float | None
+    maximum_favorable_excursion: float | None
+
+
+class ExperienceDetailPayload(ExperienceSummaryPayload):
+    decision: CouncilDecisionPayload
+    specialist_outputs: tuple[AgentSignalPayload, ...]
+    applied_weights: tuple[AppliedWeightPayload, ...]
+    backtest_run_id: str
+    risk_policy_version: str
+    truth_available_at: datetime | None
+
+
+class ExperiencePage(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    items: tuple[ExperienceSummaryPayload, ...]
+    total: int = Field(ge=0)
+    limit: int = Field(gt=0)
+    offset: int = Field(ge=0)
+
+
+class ExperienceResponse(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    episode: ExperienceDetailPayload
+
+
+class WeightScopePayload(PublicModel):
+    asset_class: str | None
+    symbol: str | None
+    regime: str | None
+    horizon_bars: int | None
+
+
+class AdaptiveWeightPayload(PublicModel):
+    long_term: float
+    recent: float
+    recent_mix: float
+    effective: float
+
+
+class ScopedAgentWeightPayload(PublicModel):
+    agent_id: str
+    scope: WeightScopePayload
+    weight: AdaptiveWeightPayload
+
+
+class WeightGenerationPayload(PublicModel):
+    generation: int
+    generation_id: str
+    parent_generation_id: str | None
+    created_at: datetime
+    scoring_version: str
+    profile_id: str
+    entries: tuple[ScopedAgentWeightPayload, ...]
+
+
+class WeightGenerationPage(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    active_generation_id: str | None
+    items: tuple[WeightGenerationPayload, ...]
+    total: int = Field(ge=0)
+
+
+class EvaluationMetricsPayload(PublicModel):
+    episode_count: int
+    total_return: float
+    benchmark_relative_return: float
+    maximum_drawdown: float
+    hit_rate: float
+    mean_calibration_error: float
+    risk_adjusted_return: float
+    turnover: float
+    cost_adjusted_return: float
+    worst_slice_return: float
+    score: float
+
+
+class WeightChangePayload(PublicModel):
+    agent_id: str
+    scope: WeightScopePayload
+    current: AdaptiveWeightPayload
+    proposed: AdaptiveWeightPayload
+    sample_count: int
+    confidence: float
+    long_term_accuracy: float | None
+    recent_accuracy: float | None
+    reason: str
+
+
+class LearningReviewPayload(PublicModel):
+    result_id: str
+    proposal_id: str
+    base_generation_id: str
+    decision: Literal["accept", "reject", "accept_reduced_update"]
+    created_at: datetime
+    training_cutoff: datetime
+    evaluated_at: datetime
+    librarian_version: str
+    teacher_version: str
+    scoring_version: str
+    training_episode_count: int
+    held_out_episode_count: int
+    changes: tuple[WeightChangePayload, ...]
+    accepted_changes: tuple[WeightChangePayload, ...]
+    baseline: EvaluationMetricsPayload
+    proposed: EvaluationMetricsPayload
+    reasons: tuple[str, ...]
+
+
+class LearningReviewPage(PublicModel):
+    api_version: Literal["v1"] = "v1"
+    items: tuple[LearningReviewPayload, ...]
+    total: int = Field(ge=0)
 
 
 class ExperimentAgentRequest(PublicModel):

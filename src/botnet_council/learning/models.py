@@ -216,6 +216,21 @@ class TeacherResult(LearningModel):
         return self
 
 
+class LearningReview(LearningModel):
+    """Immutable Librarian proposal joined to its Teacher decision."""
+
+    proposal: WeightProposal
+    result: TeacherResult
+
+    @model_validator(mode="after")
+    def validate_join(self) -> Self:
+        if self.result.proposal_id != self.proposal.proposal_id:
+            raise ValueError("Teacher result belongs to another proposal")
+        if self.result.base_generation_id != self.proposal.base_generation_id:
+            raise ValueError("proposal and Teacher result use different base generations")
+        return self
+
+
 class LibrarianConfig(LearningModel):
     maximum_weight_delta: float = Field(default=0.10, gt=0, le=0.50)
     minimum_samples: int = Field(default=8, ge=2)

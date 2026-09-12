@@ -13,7 +13,7 @@ function portfolio(equity: number): PortfolioPayload {
 
 function stageEvent(streamId: string, sequence: number, eventId = `e-${sequence}`, runId = 'opaque-a'): TelemetryEvent {
   return {
-    event_id: eventId, event_type: 'pipeline_started', schema_version: '1.1', stream_id: streamId,
+    event_id: eventId, event_type: 'pipeline_started', schema_version: '1.2', stream_id: streamId,
     sequence, run_id: runId, symbol: 'BTC/USD', timeframe: '5m', emitted_at: at,
     source_snapshot_id: null, correlation_id: null,
     payload: { stage: 'pipeline', message: '', agent_id: null, agent_version: null, decision_id: null, order_id: null, total_agents: null },
