@@ -425,7 +425,7 @@ def _single_result_artifact(directory: Path) -> Path:
 
 def _publish_artifact(directory: Path, artifact: Path) -> Path:
     content = artifact.read_bytes()
-    destination = directory / f"{sha256(content).hexdigest()}{artifact.suffix}"
+    destination = directory / f"{sha256(content).hexdigest()[:24]}{artifact.suffix}"
     directory.mkdir(parents=True, exist_ok=True)
     if destination.exists():
         if destination.read_bytes() != content:
