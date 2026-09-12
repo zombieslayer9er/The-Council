@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from math import prod
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,7 @@ from botnet_council.learning import (
     WeightProposal,
     WeightScope,
 )
+from botnet_council.learning.teacher import evaluate_profile
 from botnet_council.market_data import (
     Asset,
     InMemoryHistoricalProvider,
@@ -231,6 +233,38 @@ def test_librarian_proposes_bounded_slow_and_fast_changes_without_mutation() -> 
     assert len(proposal.training_episode_ids) == 6
 
 
+def test_librarian_counts_equivalent_reruns_once() -> None:
+    current = profile()
+    episodes = tuple(learning_episode(hour) for hour in range(4, 10))
+    reruns = tuple(
+        episode.model_copy(
+            update={
+                "evidence": episode.evidence.model_copy(
+                    update={"backtest_run_id": f"rerun-{index}"}
+                )
+            }
+        )
+        for index, episode in enumerate(episodes)
+    )
+    librarian = Librarian(
+        LibrarianConfig(
+            maximum_weight_delta=0.2,
+            minimum_samples=4,
+            full_confidence_samples=4,
+            recent_window=4,
+        )
+    )
+    kwargs = {
+        "scope": WeightScope(),
+        "training_cutoff": BASE + timedelta(hours=12),
+        "created_at": BASE + timedelta(hours=12),
+    }
+    expected = librarian.propose(current, episodes, **kwargs)
+    actual = librarian.propose(current, episodes + reruns, **kwargs)
+    assert len(actual.training_episode_ids) == len(expected.training_episode_ids) == 6
+    assert actual == expected
+
+
 def test_teacher_accepts_held_out_improvement_deterministically() -> None:
     current, proposal = librarian_proposal()
     held_out = tuple(learning_episode(hour) for hour in range(12, 18))
@@ -249,6 +283,66 @@ def test_teacher_accepts_held_out_improvement_deterministically() -> None:
     assert first.decision is TeacherDecision.ACCEPT
     assert first.comparison.proposed.score > first.comparison.baseline.score
     assert first.accepted_changes == proposal.changes
+
+
+def test_teacher_min_held_out_uses_independent_trials() -> None:
+    current, proposal = librarian_proposal()
+    episode = learning_episode(12)
+    reruns = tuple(
+        episode.model_copy(
+            update={
+                "evidence": episode.evidence.model_copy(
+                    update={"backtest_run_id": f"rerun-{index}"}
+                )
+            }
+        )
+        for index in range(4)
+    )
+    with pytest.raises(ValueError, match="insufficient held-out episodes"):
+        Teacher(TeacherConfig(minimum_held_out_episodes=2)).evaluate(
+            current,
+            proposal,
+            (episode, *reruns),
+            evaluated_at=BASE + timedelta(hours=25),
+        )
+
+
+def test_teacher_rejects_evaluation_before_proposal_creation() -> None:
+    current, proposal = librarian_proposal()
+    with pytest.raises(ValueError, match="proposal cannot be evaluated before it was created"):
+        Teacher().evaluate(
+            current,
+            proposal,
+            tuple(learning_episode(hour) for hour in range(12, 18)),
+            evaluated_at=proposal.created_at - timedelta(hours=1),
+        )
+
+
+def test_teacher_scores_overlapping_horizons_without_compounding() -> None:
+    episodes = tuple(learning_episode(hour) for hour in range(4, 10))
+    base = profile()
+    base = base.model_copy(
+        update={
+            "entries": tuple(
+                entry.model_copy(
+                    update={"weight": AdaptiveWeight(long_term=0.0, recent=0.0)}
+                )
+                if entry.agent_id == "bad"
+                else entry
+                for entry in base.entries
+            )
+        }
+    )
+    metrics = evaluate_profile(base, episodes, TeacherConfig())
+    realized = [
+        episode.truth.oracle_outcome.realized_return
+        for episode in episodes
+        if episode.truth
+    ]
+    expected = prod(1.0 + realized[index] for index in (0, 2, 4)) - 1.0
+    compounded = prod(1.0 + value for value in realized) - 1.0
+    assert metrics.total_return == pytest.approx(expected)
+    assert metrics.total_return < compounded
 
 
 def test_teacher_rejects_overfit_proposal_and_profile_store_cannot_promote_it(
@@ -295,6 +389,12 @@ def test_only_accepted_teacher_result_creates_generation_and_rollback_preserves_
     assert store.rollback("weights-v0000") == current
     assert store.active() == current
     assert store.get("weights-v0001") == promoted
+    first_path = tmp_path / "profiles" / "profiles" / "weights-v0001.json"
+    first_bytes = first_path.read_bytes()
+    promoted_again = store.promote(current, proposal, result)
+    assert promoted_again.generation_id == "weights-v0002"
+    assert promoted_again.parent_generation_id == "weights-v0000"
+    assert first_path.read_bytes() == first_bytes
     assert store.list_reviews()[0].proposal == proposal
     assert store.list_reviews()[0].result == result
 

@@ -164,6 +164,50 @@ def test_freqtrade_process_failure_never_falls_back(tmp_path: Path, as_of: datet
         FreqtradeBacktestEngine(runner=runner).run(request(tmp_path, as_of))
 
 
+def test_freqtrade_rejects_reused_result_from_prior_invocation(
+    tmp_path: Path, as_of: datetime
+) -> None:
+    configured = request(tmp_path, as_of)
+    engine = FreqtradeBacktestEngine(runner=FakeRunner(result_payload(as_of)))
+    engine.run(configured)
+
+    class SilentRunner(FakeRunner):
+        def run(
+            self, command: Sequence[str], *, cwd: Path, timeout: int
+        ) -> ProcessResult:
+            self.commands.append(tuple(command))
+            if "--version" in command:
+                return ProcessResult(0, "Freqtrade 2026.8", "")
+            return ProcessResult(0, "analysis completed", "")
+
+    with pytest.raises(FreqtradeArtifactError, match="produced no result artifact"):
+        FreqtradeBacktestEngine(runner=SilentRunner()).run(configured)
+
+
+@pytest.mark.parametrize(
+    ("mutator", "message"),
+        (
+            (lambda payload, as_of: payload["strategy"]["CouncilStrategy"]["trades"][0].update(
+                {
+                    "open_date": (as_of + timedelta(days=1)).isoformat(),
+                    "close_date": (as_of + timedelta(days=1, hours=1)).isoformat(),
+                }
+            ), "outside requested period"),
+        (lambda payload, as_of: payload["strategy"]["CouncilStrategy"]["trades"][0].update(
+            {"pair": "OTHER/USD"}
+        ), "not in request"),
+    ),
+)
+def test_freqtrade_rejects_result_from_foreign_period(
+    tmp_path: Path, as_of: datetime, mutator: object, message: str
+) -> None:
+    payload = result_payload(as_of)
+    assert callable(mutator)
+    mutator(payload, as_of)  # type: ignore[operator]
+    with pytest.raises(FreqtradeArtifactError, match=message):
+        FreqtradeBacktestEngine(runner=FakeRunner(payload)).run(request(tmp_path, as_of))
+
+
 def test_freqtrade_malformed_export_is_structured_failure(
     tmp_path: Path, as_of: datetime
 ) -> None:

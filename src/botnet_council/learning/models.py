@@ -127,6 +127,7 @@ class WeightProposal(LearningModel):
     created_at: datetime
     training_cutoff: datetime
     training_episode_ids: tuple[str, ...]
+    training_equivalence_ids: tuple[str, ...] = ()
     changes: tuple[WeightChange, ...]
     librarian_version: str
 
@@ -144,6 +145,8 @@ class WeightProposal(LearningModel):
             raise ValueError("proposal cannot be created before its training cutoff")
         if len(self.training_episode_ids) != len(set(self.training_episode_ids)):
             raise ValueError("training episode IDs must be unique")
+        if len(self.training_equivalence_ids) != len(set(self.training_equivalence_ids)):
+            raise ValueError("training equivalence IDs must be unique")
         identities = tuple((item.agent_id, item.scope) for item in self.changes)
         if len(identities) != len(set(identities)):
             raise ValueError("proposal changes must have unique agent and scope identities")
@@ -247,7 +250,7 @@ class LibrarianConfig(LearningModel):
 
 
 class TeacherConfig(LearningModel):
-    scoring_version: str = "teacher-score-v1"
+    scoring_version: str = "teacher-score-v2"
     minimum_held_out_episodes: int = Field(default=8, ge=2)
     minimum_score_improvement: float = Field(default=0.001, ge=0)
     maximum_worst_slice_degradation: float = Field(default=0.02, ge=0)

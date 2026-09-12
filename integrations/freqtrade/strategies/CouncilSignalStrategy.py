@@ -5,6 +5,8 @@ versioned JSON artifact emitted by CouncilDecisionStrategyAdapter.
 """
 
 import json
+import re
+from datetime import UTC, datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -32,7 +34,7 @@ class CouncilSignalStrategy(IStrategy):
         payload = json.loads(Path(configured).read_text(encoding="utf-8"))
         if payload.get("adapter_id") != "council-decision-signals":
             raise ValueError("unsupported Council signal adapter")
-        if payload.get("adapter_version") != "1.1":
+        if payload.get("adapter_version") != "1.2":
             raise ValueError("unsupported Council signal artifact version")
         rows = payload.get("signals")
         if not isinstance(rows, list):
@@ -43,7 +45,16 @@ class CouncilSignalStrategy(IStrategy):
                 raise ValueError("Council signal rows must be objects")
             pair = row.get("pair")
             timestamp = row.get("candle_at")
-            if not isinstance(pair, str) or not isinstance(timestamp, str):
+            decided_at = row.get("decided_at")
+            source_as_of = row.get("source_as_of")
+            timeframe = row.get("timeframe")
+            if (
+                not isinstance(pair, str)
+                or not isinstance(timestamp, str)
+                or not isinstance(decided_at, str)
+                or not isinstance(source_as_of, str)
+                or not isinstance(timeframe, str)
+            ):
                 raise ValueError("Council signal pair and candle_at are required")
             for field in ("enter_long", "exit_long", "enter_short", "exit_short"):
                 if type(row.get(field)) is not bool:
@@ -52,11 +63,37 @@ class CouncilSignalStrategy(IStrategy):
             if candle_at.tzinfo is None:
                 raise ValueError("Council signal candle_at must be timezone-aware")
             candle_at = candle_at.tz_convert("UTC")
+            decision_time = _parse_datetime(decided_at)
+            source_time = _parse_datetime(source_as_of)
+            if candle_at.to_pydatetime() >= source_time:
+                raise ValueError("Council signal candle must open before the decision data cutoff")
+            if candle_at.to_pydatetime() + _timeframe_duration(timeframe) < decision_time:
+                raise ValueError("Council signal candle closes before the decision")
             pair_rows = indexed.setdefault(pair, {})
             if candle_at in pair_rows:
                 raise ValueError(f"duplicate Council signal for {pair} at {candle_at}")
             pair_rows[candle_at] = row
         return indexed
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("Council signal timestamps must be timezone-aware")
+    return parsed.astimezone(UTC)
+
+
+def _timeframe_duration(timeframe: str) -> timedelta:
+    match = re.fullmatch(r"([1-9][0-9]*)([mhdw])", timeframe)
+    if match is None:
+        raise ValueError(f"unknown timeframe: {timeframe}")
+    count = int(match.group(1))
+    return {
+        "m": timedelta(minutes=count),
+        "h": timedelta(hours=count),
+        "d": timedelta(days=count),
+        "w": timedelta(weeks=count),
+    }[match.group(2)]
 
     def populate_indicators(self, dataframe: DataFrame, metadata: dict[str, Any]) -> DataFrame:
         return dataframe

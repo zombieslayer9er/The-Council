@@ -10,10 +10,11 @@ import subprocess
 import zipfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, cast
+from uuid import uuid4
 
 from botnet_council.backtest.authoritative import (
     AuthoritativeBacktestRequest,
@@ -176,22 +177,24 @@ class FreqtradeBacktestEngine:
     def run(self, request: AuthoritativeBacktestRequest) -> AuthoritativeBacktestResult:
         version = self._version(request.artifact_directory)
         run_directory = request.artifact_directory / request.request_id
-        result_directory = run_directory / "results"
-        result_directory.mkdir(parents=True, exist_ok=True)
+        run_directory.mkdir(parents=True, exist_ok=True)
+        invocation = run_directory / "invocations" / uuid4().hex
+        invocation.mkdir(parents=True, exist_ok=False)
         config = self._effective_config(request)
         config_path = run_directory / "effective-config.json"
         config_path.write_text(_canonical_json(config), encoding="utf-8")
         command = self._base_command(request, config_path, "backtesting")
         command.extend(("--export", "trades", "--cache", "none"))
-        command.extend(("--backtest-directory", self._runtime_path(result_directory)))
-        completed = self._runner.run(command, cwd=run_directory, timeout=self._timeout)
+        command.extend(("--backtest-directory", self._runtime_path(invocation)))
+        completed = self._runner.run(command, cwd=invocation, timeout=self._timeout)
         transcript = run_directory / "process.txt"
-        transcript.write_text(
-            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}", encoding="utf-8"
-        )
+        transcript_content = f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        transcript.write_text(transcript_content, encoding="utf-8")
         if completed.returncode != 0:
             raise FreqtradeProcessError(command, completed.returncode, completed.stderr)
-        artifact = _single_result_artifact(result_directory)
+        artifact = _single_result_artifact(invocation)
+        (invocation / "process.txt").write_text(transcript_content, encoding="utf-8")
+        artifact = _publish_artifact(run_directory / "results", artifact)
         payload = _load_result(artifact)
         return _normalize_result(request, version, config, artifact, payload)
 
@@ -199,8 +202,10 @@ class FreqtradeBacktestEngine:
         self, request: AuthoritativeBacktestRequest, kind: ValidationKind
     ) -> ValidationArtifact:
         version = self._version(request.artifact_directory)
-        run_directory = request.artifact_directory / request.request_id / "validation"
+        run_directory = request.artifact_directory / request.request_id
         run_directory.mkdir(parents=True, exist_ok=True)
+        invocation = run_directory / "invocations" / uuid4().hex
+        invocation.mkdir(parents=True, exist_ok=False)
         config = self._effective_config(request)
         config_path = run_directory / "effective-config.json"
         config_path.write_text(_canonical_json(config), encoding="utf-8")
@@ -210,19 +215,27 @@ class FreqtradeBacktestEngine:
             f"{kind.value}-analysis",
             include_execution=kind is ValidationKind.LOOKAHEAD,
         )
-        csv_path = run_directory / f"{kind.value}.csv"
+        csv_path = invocation / f"{kind.value}.csv"
         if kind is ValidationKind.LOOKAHEAD:
             command.extend(
                 ("--lookahead-analysis-exportfilename", self._runtime_path(csv_path))
             )
-        completed = self._runner.run(command, cwd=run_directory, timeout=self._timeout)
+        completed = self._runner.run(command, cwd=invocation, timeout=self._timeout)
         transcript = run_directory / f"{kind.value}.txt"
-        transcript.write_text(
-            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}", encoding="utf-8"
-        )
+        transcript_content = f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        transcript.write_text(transcript_content, encoding="utf-8")
         if completed.returncode != 0:
             raise FreqtradeProcessError(command, completed.returncode, completed.stderr)
-        artifact = csv_path if csv_path.exists() else transcript
+        (invocation / f"{kind.value}.txt").write_text(
+            transcript_content, encoding="utf-8"
+        )
+        if kind is ValidationKind.LOOKAHEAD:
+            artifact = _single_result_artifact(invocation)
+        else:
+            artifact = invocation / f"{kind.value}.txt"
+        results_directory = run_directory / "results"
+        results_directory.mkdir(parents=True, exist_ok=True)
+        published = _publish_artifact(results_directory, artifact)
         findings = _validation_findings(kind, artifact, completed.stdout)
         if not findings:
             status = ValidationStatus.INCONCLUSIVE
@@ -235,8 +248,8 @@ class FreqtradeBacktestEngine:
             status=status,
             engine_version=version,
             request_id=request.request_id,
-            artifact_path=artifact,
-            artifact_sha256=_file_sha256(artifact),
+            artifact_path=published,
+            artifact_sha256=_file_sha256(published),
             findings=findings,
         )
 
@@ -377,6 +390,7 @@ def _canonical_json(value: Mapping[str, Any]) -> str:
 
 def _single_result_artifact(directory: Path) -> Path:
     marker = directory / ".last_result.json"
+    selected: Path | None = None
     if marker.exists():
         try:
             value = json.loads(marker.read_text(encoding="utf-8"))
@@ -384,18 +398,43 @@ def _single_result_artifact(directory: Path) -> Path:
             selected = directory / filename if isinstance(filename, str) else None
         except (OSError, ValueError):
             selected = None
-        if selected is not None and selected.is_file() and selected.parent == directory:
-            return selected
+        if selected is not None and (
+            not selected.is_file() or selected.parent != directory
+        ):
+            selected = None
     candidates = sorted(
         path
-        for path in (*directory.glob("*.zip"), *directory.glob("*.json"))
+        for path in (
+            *directory.glob("*.zip"),
+            *directory.glob("*.json"),
+            *directory.glob("*.csv"),
+        )
         if not path.name.startswith(".")
     )
     if len(candidates) != 1:
+        if not candidates:
+            raise FreqtradeArtifactError("Freqtrade process produced no result artifact")
         raise FreqtradeArtifactError(
             f"expected exactly one Freqtrade result artifact, found {len(candidates)}"
         )
+    if selected is not None and selected != candidates[0]:
+        raise FreqtradeArtifactError("Freqtrade marker does not identify the result artifact")
     return candidates[0]
+
+
+def _publish_artifact(directory: Path, artifact: Path) -> Path:
+    content = artifact.read_bytes()
+    destination = directory / f"{sha256(content).hexdigest()}{artifact.suffix}"
+    directory.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        if destination.read_bytes() != content:
+            raise FreqtradeArtifactError(
+                f"content-addressed artifact conflicts with existing file: {destination}"
+            )
+    else:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(content)
+    return destination
 
 
 def _load_result(path: Path) -> Mapping[str, Any]:
@@ -437,6 +476,14 @@ def _normalize_result(
     if not isinstance(raw_trades, list):
         raise FreqtradeArtifactError("Freqtrade trades must be an array")
     trades = tuple(_normalize_trade(item, index) for index, item in enumerate(raw_trades))
+    for trade in trades:
+        if trade.instrument not in request.instruments:
+            raise FreqtradeArtifactError(
+                f"trade instrument {trade.instrument!r} not in request"
+            )
+        if not request.start <= trade.opened_at <= trade.closed_at <= request.end:
+            raise FreqtradeArtifactError("trade outside requested period")
+    _validate_result_period(request, raw)
     starting = _number(raw, "starting_balance")
     ending = _number(raw, "final_balance")
     pnl = _number(raw, "profit_total_abs")
@@ -519,6 +566,54 @@ def _normalize_trade(value: Any, index: int) -> NormalizedTrade:
         entry_tag=_optional_text(value.get("enter_tag")),
         exit_reason=_optional_text(value.get("exit_reason")),
     )
+
+
+def _validate_result_period(
+    request: AuthoritativeBacktestRequest, strategy: Mapping[str, Any]
+) -> None:
+    supplied = {
+        "start": strategy.get("backtest_start_ts"),
+        "end": strategy.get("backtest_end_ts"),
+        "timeframe": strategy.get("timeframe"),
+    }
+    if not any(value is not None for value in supplied.values()):
+        return
+    if supplied["timeframe"] != request.timeframe:
+        raise FreqtradeArtifactError("result period does not match request")
+    if supplied["start"] is None or supplied["end"] is None:
+        raise FreqtradeArtifactError("result period does not match request")
+    try:
+        start = _parse_export_datetime(supplied["start"])
+        end = _parse_export_datetime(supplied["end"])
+    except (TypeError, ValueError) as error:
+        raise FreqtradeArtifactError("result period does not match request") from error
+    tolerance = _timeframe_duration(request.timeframe)
+    if abs(start - request.start) > tolerance or abs(end - request.end) > tolerance:
+        raise FreqtradeArtifactError("result period does not match request")
+
+
+def _parse_export_datetime(value: Any) -> datetime:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        seconds = float(value) / (1000.0 if abs(value) >= 10**11 else 1.0)
+        return datetime.fromtimestamp(seconds, tz=UTC)
+    if isinstance(value, str):
+        return _parse_datetime(value)
+    raise TypeError("invalid export timestamp")
+
+
+def _timeframe_duration(timeframe: str) -> timedelta:
+    if len(timeframe) < 2 or not timeframe[:-1].isdigit():
+        raise ValueError("unknown timeframe")
+    count = int(timeframe[:-1])
+    unit = timeframe[-1]
+    if count <= 0:
+        raise ValueError("unknown timeframe")
+    return {
+        "m": timedelta(minutes=count),
+        "h": timedelta(hours=count),
+        "d": timedelta(days=count),
+        "w": timedelta(weeks=count),
+    }[unit]
 
 
 def _normalize_equity(value: Any, starting: float) -> tuple[EquityPoint, ...]:

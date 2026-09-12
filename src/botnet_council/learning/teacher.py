@@ -19,6 +19,7 @@ from botnet_council.learning.models import (
     WeightProposal,
 )
 from botnet_council.learning.profiles import apply_changes, reduced_changes
+from botnet_council.learning.trials import independent_trials
 
 
 class Teacher:
@@ -38,17 +39,20 @@ class Teacher:
         evaluated_at = _utc(evaluated_at)
         if proposal.base_generation_id != base.generation_id:
             raise ValueError("proposal does not target the supplied base profile")
-        episodes = tuple(
-            sorted(
-                held_out_episodes,
-                key=lambda item: (item.evidence.decision_timestamp, item.episode_id),
-            )
-        )
+        if proposal.created_at > evaluated_at:
+            raise ValueError("proposal cannot be evaluated before it was created")
+        episodes = independent_trials(held_out_episodes)
         if len(episodes) < self._config.minimum_held_out_episodes:
             raise ValueError("insufficient held-out episodes for Teacher evaluation")
-        training_ids = set(proposal.training_episode_ids)
-        if any(item.episode_id in training_ids for item in episodes):
-            raise ValueError("training and held-out episodes must be disjoint")
+        training_equivalence_ids = set(proposal.training_equivalence_ids)
+        if not training_equivalence_ids:
+            training_equivalence_ids = set(proposal.training_episode_ids)
+        if any(
+            item.equivalence_id in training_equivalence_ids
+            or item.episode_id in proposal.training_episode_ids
+            for item in episodes
+        ):
+            raise ValueError("held-out episodes overlap training episodes")
         if any(item.evidence.decision_timestamp < proposal.training_cutoff for item in episodes):
             raise ValueError("held-out decisions must not precede the training cutoff")
         if any(item.truth is None for item in episodes):
@@ -115,7 +119,10 @@ def evaluate_profile(
     correctness: list[float] = []
     calibration_errors: list[float] = []
     exposures: list[float] = []
-    for episode in episodes:
+    last_exit: datetime | None = None
+    for episode in sorted(
+        episodes, key=lambda item: (item.evidence.decision_timestamp, item.episode_id)
+    ):
         truth = episode.truth
         if truth is None or truth.oracle_outcome.realized_return is None:
             raise ValueError("profile evaluation requires complete realized returns")
@@ -141,8 +148,12 @@ def evaluate_profile(
         )
         exposure = decision.target_exposure or 0.0
         realized = truth.oracle_outcome.realized_return
-        returns.append(exposure * realized)
-        benchmark_returns.append(realized)
+        decision_timestamp = evidence.decision_timestamp
+        overlapping = last_exit is not None and decision_timestamp < last_exit
+        returns.append(0.0 if overlapping else exposure * realized)
+        benchmark_returns.append(0.0 if overlapping else realized)
+        if not overlapping:
+            last_exit = truth.oracle_outcome.horizon_end
         actual_direction = truth.oracle_outcome.realized_direction
         correct = float(decision.forecast_direction is actual_direction)
         correctness.append(correct)

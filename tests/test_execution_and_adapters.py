@@ -235,6 +235,8 @@ def test_council_decision_adapter_writes_immutable_freqtrade_signals(
     assert translated[0].enter_long is True
     assert translated[0].candle_at == candle_open
     assert translated[0].decision_id == decision.decision_id
+    assert translated[0].decided_at == decision.decided_at
+    assert translated[0].source_as_of == decision.source_as_of
     assert first == second == destination
 
 
@@ -253,4 +255,20 @@ def test_freqtrade_signal_adapter_requires_exact_causal_candle_open(
         adapter.translate(
             (decision,),
             candle_open_by_decision_id={decision.decision_id: decision.source_as_of},
+        )
+
+
+def test_freqtrade_signal_adapter_rejects_candle_before_decision_availability(
+    rising_snapshot: MarketSnapshot,
+) -> None:
+    signal = TrendAgent().analyze(rising_snapshot, AgentContext(run_id="signals-availability"))
+    decision = DeterministicCouncil(CouncilConfig(minimum_conviction=0.0)).aggregate(
+        rising_snapshot, (signal,)
+    )
+    with pytest.raises(ValueError, match="closes before the decision"):
+        CouncilDecisionStrategyAdapter().translate(
+            (decision,),
+            candle_open_by_decision_id={
+                decision.decision_id: decision.source_as_of - timedelta(days=1)
+            },
         )

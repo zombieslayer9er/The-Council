@@ -5,9 +5,10 @@ inside a strategy/plugin while council, agent, and risk code remain unchanged.
 """
 
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -43,6 +44,9 @@ class FreqtradeStrategySignal:
     signal_tag: str
     decision_id: str
     source_snapshot_id: str
+    decided_at: datetime
+    source_as_of: datetime
+    timeframe: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,7 +54,7 @@ class CouncilDecisionStrategyAdapter:
     """Translate decisions without introducing Freqtrade types into Council contracts."""
 
     adapter_id: str = "council-decision-signals"
-    adapter_version: str = "1.1"
+    adapter_version: str = "1.2"
 
     def translate(
         self,
@@ -74,6 +78,8 @@ class CouncilDecisionStrategyAdapter:
             candle_open = candle_open.astimezone(UTC)
             if candle_open >= decision.source_as_of:
                 raise ValueError("Freqtrade candle must open before the decision data cutoff")
+            if candle_open + _timeframe_duration(decision.timeframe) < decision.decided_at:
+                raise ValueError("Freqtrade candle closes before the decision")
             actionable = decision.action in (
                 ActionIntent.TARGET_EXPOSURE,
                 ActionIntent.REDUCE_ONLY,
@@ -93,6 +99,9 @@ class CouncilDecisionStrategyAdapter:
                     signal_tag=decision.action.value,
                     decision_id=decision.decision_id,
                     source_snapshot_id=decision.source_snapshot_id,
+                    decided_at=decision.decided_at,
+                    source_as_of=decision.source_as_of,
+                    timeframe=decision.timeframe,
                 )
             )
         return tuple(signals)
@@ -111,7 +120,8 @@ class CouncilDecisionStrategyAdapter:
             decisions, candle_open_by_decision_id=candle_open_by_decision_id
         ):
             row = asdict(signal)
-            row["candle_at"] = signal.candle_at.isoformat()
+            for field in ("candle_at", "decided_at", "source_as_of"):
+                row[field] = getattr(signal, field).isoformat()
             rows.append(row)
         content = json.dumps(
             {
@@ -148,3 +158,17 @@ def to_freqtrade_order(order: ApprovedOrder, *, mode: PaperMode) -> FreqtradeOrd
         expires_at=order.expires_at,
         fill_policy=order.fill_policy.value,
     )
+
+
+def _timeframe_duration(timeframe: str) -> timedelta:
+    match = re.fullmatch(r"([1-9][0-9]*)([mhdw])", timeframe)
+    if match is None:
+        raise ValueError(f"unknown timeframe: {timeframe}")
+    count = int(match.group(1))
+    unit = match.group(2)
+    return {
+        "m": timedelta(minutes=count),
+        "h": timedelta(hours=count),
+        "d": timedelta(days=count),
+        "w": timedelta(weeks=count),
+    }[unit]

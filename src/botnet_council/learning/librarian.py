@@ -14,6 +14,7 @@ from botnet_council.learning.models import (
     WeightProposal,
     WeightScope,
 )
+from botnet_council.learning.trials import independent_trials
 from botnet_council.schemas import SignalType, SignalValidity
 
 
@@ -34,18 +35,13 @@ class Librarian:
     ) -> WeightProposal:
         training_cutoff = _utc(training_cutoff, "training_cutoff")
         created_at = _utc(created_at, "created_at")
-        eligible = tuple(
-            sorted(
-                (
-                    item
-                    for item in episodes
-                    if item.truth is not None
-                    and item.truth.available_at < training_cutoff
-                    and item.evidence.decision_timestamp < training_cutoff
-                    and _episode_matches(item, scope)
-                ),
-                key=lambda item: (item.evidence.decision_timestamp, item.episode_id),
-            )
+        eligible = independent_trials(
+            item
+            for item in episodes
+            if item.truth is not None
+            and item.truth.available_at < training_cutoff
+            and item.evidence.decision_timestamp < training_cutoff
+            and _episode_matches(item, scope)
         )
         changes: list[WeightChange] = []
         for entry in profile.entries:
@@ -106,6 +102,7 @@ class Librarian:
             created_at=created_at,
             training_cutoff=training_cutoff,
             training_episode_ids=tuple(item.episode_id for item in eligible),
+            training_equivalence_ids=tuple(item.equivalence_id for item in eligible),
             changes=tuple(changes),
             librarian_version=self.version,
         )

@@ -21,6 +21,7 @@ from botnet_council.learning.profiles import (
     reduced_changes,
 )
 from botnet_council.learning.teacher import Teacher, evaluate_profile
+from botnet_council.learning.trials import independent_trials
 
 __all__ = [
     "LEARNING_SCHEMA_VERSION",
@@ -42,5 +43,6 @@ __all__ = [
     "WeightScope",
     "apply_changes",
     "evaluate_profile",
+    "independent_trials",
     "reduced_changes",
 ]
