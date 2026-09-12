@@ -1,0 +1,3 @@
+# Local task artifacts are not part of the repository knowledge graph.
+.codex-remote-attachments/
+audits/

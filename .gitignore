@@ -19,3 +19,13 @@ experiment-results/
 integrations/freqtrade/user_data/
 node_modules/
 .pnpm-store/
+
+# Graphify team outputs are committed; local caches and machine metadata are not.
+graphify-out/cache/
+graphify-out/cost.json
+graphify-out/.graphify_analysis.json
+graphify-out/.graphify_root
+graphify-out/memory/
+graphify-out/reflections/
+graphify-out/????-??-??/
+.codex/*.graphify-bak
