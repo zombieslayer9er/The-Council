@@ -10,6 +10,14 @@ from functools import partial
 from pydantic import BaseModel, ConfigDict
 
 from botnet_council.agents import SpecialistAgent
+from botnet_council.context import (
+    ContextCapability,
+    ContextRequest,
+    ContextService,
+    MarketContext,
+    analyze_with_context,
+    requested_capabilities,
+)
 from botnet_council.council import DeterministicCouncil
 from botnet_council.execution import ExecutionAdapter
 from botnet_council.market_data import MarketDataProvider
@@ -85,6 +93,7 @@ class ResearchTradingPipeline:
         risk_governor: DeterministicRiskGovernor,
         execution: ExecutionAdapter,
         telemetry: EventPublisher | None = None,
+        context_service: ContextService | None = None,
     ) -> None:
         self._market_data = market_data
         self._agents = tuple(agents)
@@ -92,6 +101,7 @@ class ResearchTradingPipeline:
         self._risk_governor = risk_governor
         self._execution = execution
         self._telemetry = telemetry
+        self._context_service = context_service
 
     def run(
         self,
@@ -129,6 +139,29 @@ class ResearchTradingPipeline:
                 source_snapshot_id=snapshot.snapshot_id,
             )
             context = AgentContext(run_id=run_id)
+            required_context, optional_context = requested_capabilities(self._agents)
+            context_request = ContextRequest(
+                instrument=symbol,
+                timeframe=timeframe,
+                as_of=evaluated_at,
+                required=required_context,
+                optional=optional_context,
+            )
+            if self._context_service is None:
+                market_context = MarketContext(
+                    snapshot=snapshot,
+                    as_of=evaluated_at,
+                    requested_required=required_context,
+                    requested_optional=optional_context,
+                    missing_required=frozenset(
+                        required_context - {ContextCapability.PRICE_HISTORY}
+                    ),
+                    missing_optional=frozenset(
+                        optional_context - {ContextCapability.PRICE_HISTORY}
+                    ),
+                )
+            else:
+                market_context = self._context_service.enrich(snapshot, context_request)
             collected: list[AgentSignal] = []
             stage = "agents"
             for agent in self._agents:
@@ -146,7 +179,7 @@ class ResearchTradingPipeline:
                     source_snapshot_id=snapshot.snapshot_id,
                     correlation_id=agent.agent_id,
                 )
-                signal = agent.analyze(snapshot, context)
+                signal = analyze_with_context(agent, market_context, context)
                 collected.append(signal)
                 logger.info(
                     "specialist signal emitted",

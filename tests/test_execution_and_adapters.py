@@ -1,12 +1,17 @@
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pytest
 
-from botnet_council.adapters import to_freqtrade_order
+from botnet_council.adapters import CouncilDecisionStrategyAdapter, to_freqtrade_order
+from botnet_council.agents import TrendAgent
+from botnet_council.council import CouncilConfig, DeterministicCouncil
 from botnet_council.execution import PaperExecutionAdapter
 from botnet_council.schemas import (
+    AgentContext,
     ApprovedOrder,
     ExecutionStatus,
+    MarketSnapshot,
     OpeningPriceObservation,
     OrderSide,
     PriceObservation,
@@ -203,3 +208,22 @@ def test_fee_and_slippage_authorization_boundaries(as_of: datetime) -> None:
 def test_freqtrade_translation_rejects_live_mode(as_of: datetime) -> None:
     with pytest.raises(ValueError, match="dry_run and backtest only"):
         to_freqtrade_order(approved_order(as_of), mode="live")  # type: ignore[arg-type]
+
+
+def test_council_decision_adapter_writes_immutable_freqtrade_signals(
+    tmp_path: Path, rising_snapshot: MarketSnapshot
+) -> None:
+    signal = TrendAgent().analyze(rising_snapshot, AgentContext(run_id="signals"))
+    decision = DeterministicCouncil(CouncilConfig(minimum_conviction=0.0)).aggregate(
+        rising_snapshot, (signal,)
+    )
+    adapter = CouncilDecisionStrategyAdapter()
+    destination = tmp_path / "signals.json"
+
+    translated = adapter.translate((decision,))
+    first = adapter.write_signal_artifact((decision,), destination)
+    second = adapter.write_signal_artifact((decision,), destination)
+
+    assert translated[0].enter_long is True
+    assert translated[0].decision_id == decision.decision_id
+    assert first == second == destination

@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from math import exp, isfinite
 from statistics import median, pstdev
+from typing import ClassVar
 
 from botnet_council.agents._math import clamp, mean, timeframe_delta
+from botnet_council.context.models import ContextCapability
 from botnet_council.schemas import (
     ActionIntent,
     AgentContext,
@@ -52,6 +54,13 @@ class SeasonalityAgent:
     V0.1 intentionally accepts fixed hypothesis parameters only. It performs no
     parameter selection, feature search, calibration, or mutable fitting.
     """
+
+    required_context_capabilities: ClassVar[frozenset[ContextCapability]] = frozenset(
+        {ContextCapability.PRICE_HISTORY}
+    )
+    optional_context_capabilities: ClassVar[frozenset[ContextCapability]] = frozenset(
+        {ContextCapability.EVENT_CALENDAR}
+    )
 
     agent_id: str = "seasonality"
     agent_version: str = "0.1"

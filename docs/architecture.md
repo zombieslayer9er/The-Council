@@ -7,6 +7,8 @@ Immutable post-run storage and ground-truth-free Council replay are documented i
 The independent-year, full-history specialist is documented in
 [historical-recurrence.md](historical-recurrence.md).
 The post-judgment adaptive loop is documented in [learning-loop.md](learning-loop.md).
+The provider-neutral context and authoritative Freqtrade boundaries are documented in
+[backend-data-pipeline.md](backend-data-pipeline.md).
 
 ## Dependency rule
 
@@ -21,6 +23,8 @@ pipeline wires protocols to concrete implementations at the application boundary
 | Council | snapshot, signals | `CouncilDecision` | No |
 | Risk | decision, snapshot, marked portfolio, cost bounds | `RiskDecision` / `ApprovedOrder` | No |
 | Execution | `ApprovedOrder`, next-bar opening observation | `ExecutionReport` | Simulation only |
+| Context | snapshot, capabilities, `as_of` | causal `MarketContext` | Read-only |
+| Backtest engine | normalized request, signal adapter | normalized result + artifacts | External process |
 
 ## Invariants
 
@@ -34,7 +38,9 @@ pipeline wires protocols to concrete implementations at the application boundary
 6. Every approved order is capped, marked `paper_only`, deterministically identified,
    cost-bounded, and restricted to a causal `NEXT_BAR_OPEN` window.
 7. No agent API includes an execution adapter, broker, secret, or credential argument.
-8. Freqtrade vocabulary and lifecycle hooks stay in `adapters/`.
+8. Freqtrade vocabulary and lifecycle hooks stay in `adapters/` and `backtest/freqtrade.py`;
+   Council schemas never import them. Freqtrade is authoritative for production backtest fills,
+   accounting, profit, drawdown, and exported equity observations.
 9. Every risk evaluation receives a portfolio marked at exactly `evaluated_at`.
    Average entry price remains unchanged when a current mark changes; equity is cash
    plus marked position value and unrealized PnL is quantity times mark-minus-entry.
@@ -49,6 +55,13 @@ pipeline wires protocols to concrete implementations at the application boundary
 13. Account state time is monotonic across fills and mark-to-market operations.
 14. Signal generation cannot precede source-snapshot availability, and reconciliation
     recomputes authorization timing, slippage, cash, quantity, and exposure constraints.
+15. Every context datum preserves observation, publication, availability, ingestion,
+    vintage, revision, provider, source-version, and source-identity metadata. Provider
+    availability and ingestion cannot exceed the shared simulated clock.
+16. Missing required specialist context causes a deterministic insufficient-data abstention.
+    Missing optional context remains observable and never triggers an implicit substitute.
+17. External engine or provider failures are explicit. Production research never silently
+    falls back to the internal simulator or a different provider.
 
 Python types are architectural guardrails, not a hardened security sandbox. A future
 deployment should also isolate model processes from secrets at the process/network

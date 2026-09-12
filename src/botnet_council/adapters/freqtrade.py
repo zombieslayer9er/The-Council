@@ -4,11 +4,13 @@ No Freqtrade package is imported here. A future integration can consume this DTO
 inside a strategy/plugin while council, agent, and risk code remain unchanged.
 """
 
-from dataclasses import dataclass
+import json
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
-from botnet_council.schemas import ApprovedOrder
+from botnet_council.schemas import ActionIntent, ApprovedOrder, CouncilDecision, Direction
 
 PaperMode = Literal["dry_run", "backtest"]
 
@@ -25,6 +27,89 @@ class FreqtradeOrderRequest:
     earliest_fill_at: datetime
     expires_at: datetime
     fill_policy: str
+
+
+@dataclass(frozen=True, slots=True)
+class FreqtradeStrategySignal:
+    """A Council decision reduced to Freqtrade's timestamped signal vocabulary."""
+
+    pair: str
+    candle_at: datetime
+    enter_long: bool
+    exit_long: bool
+    enter_short: bool
+    exit_short: bool
+    signal_tag: str
+    decision_id: str
+    source_snapshot_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class CouncilDecisionStrategyAdapter:
+    """Translate decisions without introducing Freqtrade types into Council contracts."""
+
+    adapter_id: str = "council-decision-signals"
+    adapter_version: str = "1.0"
+
+    def translate(
+        self, decisions: tuple[CouncilDecision, ...]
+    ) -> tuple[FreqtradeStrategySignal, ...]:
+        ordered = tuple(sorted(decisions, key=lambda item: (item.decided_at, item.decision_id)))
+        if len({item.decision_id for item in ordered}) != len(ordered):
+            raise ValueError("Council decision identifiers must be unique")
+        signals: list[FreqtradeStrategySignal] = []
+        for decision in ordered:
+            if decision.source_as_of > decision.decided_at:
+                raise ValueError("Council decision uses evidence after its decision time")
+            actionable = decision.action in (
+                ActionIntent.TARGET_EXPOSURE,
+                ActionIntent.REDUCE_ONLY,
+            )
+            exposure = decision.target_exposure if actionable else None
+            enter_long = exposure is not None and exposure > 0
+            enter_short = exposure is not None and exposure < 0
+            flatten = exposure == 0
+            signals.append(
+                FreqtradeStrategySignal(
+                    pair=decision.symbol,
+                    candle_at=decision.decided_at,
+                    enter_long=enter_long,
+                    exit_long=flatten or decision.forecast_direction is Direction.SHORT,
+                    enter_short=enter_short,
+                    exit_short=flatten or decision.forecast_direction is Direction.LONG,
+                    signal_tag=decision.action.value,
+                    decision_id=decision.decision_id,
+                    source_snapshot_id=decision.source_snapshot_id,
+                )
+            )
+        return tuple(signals)
+
+    def write_signal_artifact(
+        self, decisions: tuple[CouncilDecision, ...], destination: str | Path
+    ) -> Path:
+        """Write immutable input for a Freqtrade strategy's signal merge step."""
+        path = Path(destination)
+        rows = []
+        for signal in self.translate(decisions):
+            row = asdict(signal)
+            row["candle_at"] = signal.candle_at.isoformat()
+            rows.append(row)
+        content = json.dumps(
+            {
+                "adapter_id": self.adapter_id,
+                "adapter_version": self.adapter_version,
+                "signals": rows,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n"
+        if path.exists():
+            if path.read_text(encoding="utf-8") != content:
+                raise FileExistsError(f"refusing to overwrite different signal artifact: {path}")
+            return path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
 
 
 def to_freqtrade_order(order: ApprovedOrder, *, mode: PaperMode) -> FreqtradeOrderRequest:
