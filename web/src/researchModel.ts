@@ -1,4 +1,7 @@
-import type { AgentSignalPayload } from '../../contracts/typescript/types.generated';
+import type {
+  AgentSignalPayload,
+  ExperimentSummaryPayload,
+} from '../../contracts/typescript/types.generated';
 
 export interface RecurrenceObservation {
   annual_year: number;
@@ -57,6 +60,21 @@ export function councilContributions(
     signal.agent_id,
     denominator === 0 ? 0 : ((weights[signal.agent_id] ?? 1) * signal.confidence * (signal.target_exposure ?? 0)) / denominator,
   ]));
+}
+
+export function evidenceRefreshKey(
+  summary: ExperimentSummaryPayload | null,
+  matchingEpisodeId: string | null,
+): string {
+  if (summary === null) return '';
+  return [
+    summary.experiment_id,
+    summary.state,
+    summary.forecast_locked,
+    summary.oracle_available,
+    summary.evaluation_available,
+    matchingEpisodeId ?? '',
+  ].join('|');
 }
 
 function parseWindow(value: unknown): RecurrenceWindow | null {

@@ -92,11 +92,16 @@ class WeightProfileStore:
             self.record_review(proposal, result)
             if result.decision is TeacherDecision.REJECT:
                 raise PermissionError("a rejected proposal cannot create a generation")
+            generation = max(
+                (profile.generation for profile in self.list()),
+                default=-1,
+            ) + 1
             profile = apply_changes(
                 base,
                 result.accepted_changes,
                 created_at=result.evaluated_at,
                 scoring_version=result.scoring_version,
+                generation=generation,
             )
             self._write_profile(profile)
             self._write_active(profile.generation_id)
@@ -176,7 +181,10 @@ def apply_changes(
     *,
     created_at: datetime,
     scoring_version: str,
+    generation: int | None = None,
 ) -> WeightProfile:
+    if generation is None:
+        generation = base.generation + 1
     replacements = {(item.agent_id, item.scope): item for item in changes}
     entries: list[ScopedAgentWeight] = []
     applied: set[tuple[str, object]] = set()
@@ -199,8 +207,8 @@ def apply_changes(
     if applied != set(replacements):
         raise ValueError("proposal cannot create undeclared profile scopes")
     return WeightProfile(
-        generation=base.generation + 1,
-        generation_id=f"weights-v{base.generation + 1:04d}",
+        generation=generation,
+        generation_id=f"weights-v{generation:04d}",
         parent_generation_id=base.generation_id,
         created_at=created_at,
         entries=tuple(entries),

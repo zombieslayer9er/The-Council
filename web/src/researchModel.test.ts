@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { ExperimentSummaryPayload } from '../../contracts/typescript/types.generated';
 import type { AgentSignalPayload } from '../../contracts/typescript/types.generated';
-import { councilContributions, recurrenceEvidence } from './researchModel';
+import { councilContributions, evidenceRefreshKey, recurrenceEvidence } from './researchModel';
 
 function signal(overrides: Partial<AgentSignalPayload> = {}): AgentSignalPayload {
   return {
@@ -14,6 +15,19 @@ function signal(overrides: Partial<AgentSignalPayload> = {}): AgentSignalPayload
 }
 
 describe('research evidence projections', () => {
+  it('refreshes evidence when evaluation availability changes', () => {
+    const summary = {
+      experiment_id: 'experiment-1',
+      state: 'complete',
+      forecast_locked: true,
+      oracle_available: true,
+      evaluation_available: false,
+    } as unknown as ExperimentSummaryPayload;
+    const next = { ...summary, evaluation_available: true };
+    expect(evidenceRefreshKey(summary, null)).not.toBe(evidenceRefreshKey(next, null));
+    expect(evidenceRefreshKey(summary, null)).toBe(evidenceRefreshKey(summary, null));
+    expect(evidenceRefreshKey(null, null)).toBe('');
+  });
   it('parses complete Historical Recurrence evidence and rejects malformed observations', () => {
     const recurrence = signal({
       agent_id: 'historical_recurrence',

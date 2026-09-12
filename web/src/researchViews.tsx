@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   AgentSignalPayload,
   ExperienceDetailPayload,
@@ -12,7 +12,7 @@ import type {
 import type { ResearchData } from './api';
 import { loadExperience, loadExperimentEvidence } from './api';
 import { agentLabel, money, percent, shortTime } from './model';
-import { councilContributions, recurrenceEvidence, type RecurrenceObservation } from './researchModel';
+import { councilContributions, evidenceRefreshKey, recurrenceEvidence, type RecurrenceObservation } from './researchModel';
 
 export function EvidenceView({ context, signals }: { context: MarketContextPayload | null; signals: readonly AgentSignalPayload[] }) {
   const contributions = councilContributions(signals);
@@ -78,19 +78,32 @@ export function OutcomesView({ research }: { research: ResearchData | null }) {
   const [oracle, setOracle] = useState<ExperimentOraclePayload | null>(null);
   const [evaluation, setEvaluation] = useState<ExperimentEvaluationPayload | null>(null);
   const [episode, setEpisode] = useState<ExperienceDetailPayload | null>(null);
+  const previousExperimentId = useRef<string | null>(null);
   useEffect(() => { if (!selected && experiments.length) setSelected(experiments[0].experiment_id); }, [experiments, selected]);
   const summary = experiments.find((item) => item.experiment_id === selected) ?? null;
+  const matching = summary
+    ? experiences.find((item) => item.decision_timestamp === summary.request.evaluation_time && item.symbol === summary.request.instrument)
+    : undefined;
+  const refreshKey = evidenceRefreshKey(summary, matching?.episode_id ?? null);
   useEffect(() => {
-    setForecast(null); setOracle(null); setEvaluation(null); setEpisode(null);
+    if (previousExperimentId.current !== (summary?.experiment_id ?? null)) {
+      setForecast(null); setOracle(null); setEvaluation(null); setEpisode(null);
+      previousExperimentId.current = summary?.experiment_id ?? null;
+    }
     if (!summary) return;
     const controller = new AbortController();
     void loadExperimentEvidence(summary.experiment_id, { forecast: summary.forecast_locked, oracle: summary.oracle_available, evaluation: summary.evaluation_available }, controller.signal)
-      .then((value) => { setForecast(value.forecast?.forecast ?? null); setOracle(value.oracle?.oracle_outcome ?? null); setEvaluation(value.evaluation?.evaluation ?? null); })
+      .then((value) => {
+        if (controller.signal.aborted) return;
+        setForecast(value.forecast?.forecast ?? null); setOracle(value.oracle?.oracle_outcome ?? null); setEvaluation(value.evaluation?.evaluation ?? null);
+      })
       .catch(() => undefined);
-    const matching = experiences.find((item) => item.decision_timestamp === summary.request.evaluation_time && item.symbol === summary.request.instrument);
-    if (matching) void loadExperience(matching.episode_id, controller.signal).then((value) => setEpisode(value.episode)).catch(() => undefined);
+    if (matching) void loadExperience(matching.episode_id, controller.signal).then((value) => {
+      if (controller.signal.aborted) return;
+      setEpisode(value.episode);
+    }).catch(() => undefined);
     return () => controller.abort();
-  }, [summary?.experiment_id]);
+  }, [refreshKey]);
   return <>
     <Header title="Judge outcomes" subtitle="Future outcomes appear only after the forecast lock and oracle lifecycle gates have completed." />
     <div className="outcome-layout">
