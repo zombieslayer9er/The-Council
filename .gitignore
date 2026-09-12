@@ -16,5 +16,6 @@ paper_state/
 .market-data-cache/
 backtest-results/
 experiment-results/
+integrations/freqtrade/user_data/
 node_modules/
 .pnpm-store/

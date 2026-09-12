@@ -219,11 +219,38 @@ def test_council_decision_adapter_writes_immutable_freqtrade_signals(
     )
     adapter = CouncilDecisionStrategyAdapter()
     destination = tmp_path / "signals.json"
+    candle_open = decision.source_as_of - timedelta(minutes=5)
+    candle_opens = {decision.decision_id: candle_open}
 
-    translated = adapter.translate((decision,))
-    first = adapter.write_signal_artifact((decision,), destination)
-    second = adapter.write_signal_artifact((decision,), destination)
+    translated = adapter.translate(
+        (decision,), candle_open_by_decision_id=candle_opens
+    )
+    first = adapter.write_signal_artifact(
+        (decision,), destination, candle_open_by_decision_id=candle_opens
+    )
+    second = adapter.write_signal_artifact(
+        (decision,), destination, candle_open_by_decision_id=candle_opens
+    )
 
     assert translated[0].enter_long is True
+    assert translated[0].candle_at == candle_open
     assert translated[0].decision_id == decision.decision_id
     assert first == second == destination
+
+
+def test_freqtrade_signal_adapter_requires_exact_causal_candle_open(
+    rising_snapshot: MarketSnapshot,
+) -> None:
+    signal = TrendAgent().analyze(rising_snapshot, AgentContext(run_id="signals-causal"))
+    decision = DeterministicCouncil(CouncilConfig(minimum_conviction=0.0)).aggregate(
+        rising_snapshot, (signal,)
+    )
+    adapter = CouncilDecisionStrategyAdapter()
+
+    with pytest.raises(ValueError, match="exactly one"):
+        adapter.translate((decision,), candle_open_by_decision_id={})
+    with pytest.raises(ValueError, match="open before"):
+        adapter.translate(
+            (decision,),
+            candle_open_by_decision_id={decision.decision_id: decision.source_as_of},
+        )

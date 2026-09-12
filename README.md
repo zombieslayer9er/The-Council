@@ -120,6 +120,8 @@ The separate full-history annual evidence model is documented in
 Immutable replay and conservative weight learning are documented in
 [`docs/experience-cache.md`](docs/experience-cache.md) and
 [`docs/learning-loop.md`](docs/learning-loop.md).
+The isolated authoritative Freqtrade runtime is documented in
+[`docs/freqtrade-docker.md`](docs/freqtrade-docker.md).
 
 ## Repository map
 

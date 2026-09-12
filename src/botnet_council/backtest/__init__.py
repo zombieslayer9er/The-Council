@@ -14,6 +14,7 @@ from botnet_council.backtest.authoritative import (
 from botnet_council.backtest.engine import BacktestEngine
 from botnet_council.backtest.episode import EpisodeRecord, episode_identity
 from botnet_council.backtest.freqtrade import (
+    DockerComposeCommandRunner,
     FreqtradeArtifactError,
     FreqtradeBacktestEngine,
     FreqtradeEngineError,
@@ -52,6 +53,7 @@ __all__ = [
     "EngineProvenance",
     "EpisodeRecord",
     "EquityPoint",
+    "DockerComposeCommandRunner",
     "FreqtradeArtifactError",
     "FreqtradeBacktestEngine",
     "FreqtradeEngineError",

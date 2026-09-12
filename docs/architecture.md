@@ -9,6 +9,8 @@ The independent-year, full-history specialist is documented in
 The post-judgment adaptive loop is documented in [learning-loop.md](learning-loop.md).
 The provider-neutral context and authoritative Freqtrade boundaries are documented in
 [backend-data-pipeline.md](backend-data-pipeline.md).
+The isolated local container pathway is documented in
+[freqtrade-docker.md](freqtrade-docker.md).
 
 ## Dependency rule
 

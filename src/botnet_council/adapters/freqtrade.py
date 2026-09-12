@@ -5,8 +5,9 @@ inside a strategy/plugin while council, agent, and risk code remain unchanged.
 """
 
 import json
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -49,18 +50,30 @@ class CouncilDecisionStrategyAdapter:
     """Translate decisions without introducing Freqtrade types into Council contracts."""
 
     adapter_id: str = "council-decision-signals"
-    adapter_version: str = "1.0"
+    adapter_version: str = "1.1"
 
     def translate(
-        self, decisions: tuple[CouncilDecision, ...]
+        self,
+        decisions: tuple[CouncilDecision, ...],
+        *,
+        candle_open_by_decision_id: Mapping[str, datetime],
     ) -> tuple[FreqtradeStrategySignal, ...]:
         ordered = tuple(sorted(decisions, key=lambda item: (item.decided_at, item.decision_id)))
         if len({item.decision_id for item in ordered}) != len(ordered):
             raise ValueError("Council decision identifiers must be unique")
+        decision_ids = {item.decision_id for item in ordered}
+        if set(candle_open_by_decision_id) != decision_ids:
+            raise ValueError("exactly one candle-open timestamp is required per decision")
         signals: list[FreqtradeStrategySignal] = []
         for decision in ordered:
             if decision.source_as_of > decision.decided_at:
                 raise ValueError("Council decision uses evidence after its decision time")
+            candle_open = candle_open_by_decision_id[decision.decision_id]
+            if candle_open.tzinfo is None or candle_open.utcoffset() is None:
+                raise ValueError("Freqtrade candle-open timestamps must be timezone-aware")
+            candle_open = candle_open.astimezone(UTC)
+            if candle_open >= decision.source_as_of:
+                raise ValueError("Freqtrade candle must open before the decision data cutoff")
             actionable = decision.action in (
                 ActionIntent.TARGET_EXPOSURE,
                 ActionIntent.REDUCE_ONLY,
@@ -72,7 +85,7 @@ class CouncilDecisionStrategyAdapter:
             signals.append(
                 FreqtradeStrategySignal(
                     pair=decision.symbol,
-                    candle_at=decision.decided_at,
+                    candle_at=candle_open,
                     enter_long=enter_long,
                     exit_long=flatten or decision.forecast_direction is Direction.SHORT,
                     enter_short=enter_short,
@@ -85,12 +98,18 @@ class CouncilDecisionStrategyAdapter:
         return tuple(signals)
 
     def write_signal_artifact(
-        self, decisions: tuple[CouncilDecision, ...], destination: str | Path
+        self,
+        decisions: tuple[CouncilDecision, ...],
+        destination: str | Path,
+        *,
+        candle_open_by_decision_id: Mapping[str, datetime],
     ) -> Path:
         """Write immutable input for a Freqtrade strategy's signal merge step."""
         path = Path(destination)
         rows = []
-        for signal in self.translate(decisions):
+        for signal in self.translate(
+            decisions, candle_open_by_decision_id=candle_open_by_decision_id
+        ):
             row = asdict(signal)
             row["candle_at"] = signal.candle_at.isoformat()
             rows.append(row)

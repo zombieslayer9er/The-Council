@@ -1,4 +1,5 @@
 import json
+import subprocess
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,6 +9,7 @@ import pytest
 from botnet_council.agents import TrendAgent
 from botnet_council.backtest import (
     AuthoritativeBacktestRequest,
+    DockerComposeCommandRunner,
     EpisodeRecord,
     FreqtradeArtifactError,
     FreqtradeBacktestEngine,
@@ -130,10 +132,27 @@ def test_freqtrade_is_authoritative_and_preserves_replay_identity(
     command = runner.commands[1]
     assert command[:2] == ("freqtrade", "backtesting")
     assert command[command.index("--cache") + 1] == "none"
+    assert command[command.index("--timerange") + 1] == (
+        f"{configured.start:%Y%m%dT%H%M}-{configured.end:%Y%m%dT%H%M}"
+    )
     assert configured.instruments[0] in command
+    transcript = configured.artifact_directory / configured.request_id / "process.txt"
+    assert transcript.read_text(encoding="utf-8") == (
+        "stdout:\nanalysis completed\nstderr:\n"
+    )
     config_path = Path(command[command.index("--config") + 1])
     effective_config = json.loads(config_path.read_text(encoding="utf-8"))
     assert effective_config["dry_run"] is True
+    assert effective_config["order_types"]["stoploss_on_exchange"] is False
+    assert effective_config["order_types"]["stoploss"] == "market"
+    assert effective_config["entry_pricing"] == {
+        "price_side": "other",
+        "use_order_book": False,
+    }
+    assert effective_config["exit_pricing"] == {
+        "price_side": "other",
+        "use_order_book": False,
+    }
     assert effective_config["botnet_council_seed"] == 0
     assert effective_config["botnet_council_dataset_id"] == "fixture-v1"
 
@@ -183,6 +202,77 @@ def test_missing_freqtrade_binary_is_explicit(tmp_path: Path, as_of: datetime) -
 
     with pytest.raises(FreqtradeUnavailableError, match="not installed"):
         engine.run(request(tmp_path, as_of))
+
+
+def test_docker_runner_maps_only_workspace_paths(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    compose = tmp_path / "compose.yaml"
+    compose.write_text("services: {}\n", encoding="utf-8")
+    runner = DockerComposeCommandRunner(compose, workspace)
+
+    assert runner.map_path(workspace / "artifacts" / "result.json") == (
+        "/workspace/artifacts/result.json"
+    )
+    with pytest.raises(ValueError, match="must remain inside"):
+        runner.map_path(tmp_path / "outside.json")
+
+
+def test_docker_runner_uses_disposable_noninteractive_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    compose = tmp_path / "compose.yaml"
+    compose.write_text("services: {}\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run(command: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured["command"] = tuple(command)
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(command, 0, "Freqtrade 2026.8", "")
+
+    monkeypatch.setattr("botnet_council.backtest.freqtrade.shutil.which", lambda _: "docker")
+    monkeypatch.setattr("botnet_council.backtest.freqtrade.subprocess.run", fake_run)
+    runner = DockerComposeCommandRunner(compose, workspace)
+
+    result = runner.run(("freqtrade", "--version"), cwd=workspace, timeout=30)
+
+    command = captured["command"]
+    assert isinstance(command, tuple)
+    assert command[-6:] == (
+        "run",
+        "--rm",
+        "--no-deps",
+        "-T",
+        "freqtrade",
+        "--version",
+    )
+    assert captured["shell"] is False
+    assert captured["timeout"] == 30
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
+    environment = captured["env"]
+    assert isinstance(environment, dict)
+    assert environment["BOTNET_COUNCIL_WORKSPACE"] == str(workspace.resolve())
+    assert result.stdout == "Freqtrade 2026.8"
+
+
+def test_docker_runner_reports_missing_docker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    compose = tmp_path / "compose.yaml"
+    compose.write_text("services: {}\n", encoding="utf-8")
+    monkeypatch.setattr("botnet_council.backtest.freqtrade.shutil.which", lambda _: None)
+
+    with pytest.raises(FreqtradeUnavailableError, match="Docker executable"):
+        DockerComposeCommandRunner(
+            compose, workspace, docker_executable="definitely-missing-docker"
+        ).run(
+            ("freqtrade", "--version"), cwd=workspace, timeout=30
+        )
 
 
 def test_episode_joins_frozen_context_decision_and_authoritative_outcome(

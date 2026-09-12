@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import shutil
 import subprocess
 import zipfile
@@ -11,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Protocol, cast
 
 from botnet_council.backtest.authoritative import (
@@ -65,6 +66,92 @@ class SubprocessCommandRunner:
             check=False,
             shell=False,
             text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+        )
+        return ProcessResult(completed.returncode, completed.stdout, completed.stderr)
+
+
+class DockerComposeCommandRunner:
+    """Run the external engine in the repository's isolated Compose service."""
+
+    def __init__(
+        self,
+        compose_file: str | Path,
+        workspace_root: str | Path,
+        *,
+        docker_executable: str = "docker",
+    ) -> None:
+        self._compose_file = Path(compose_file).resolve()
+        self._workspace_root = Path(workspace_root).resolve()
+        self._docker_executable = docker_executable
+        if not self._compose_file.is_file():
+            raise ValueError(f"Compose file does not exist: {self._compose_file}")
+        if not self._workspace_root.is_dir():
+            raise ValueError(f"workspace root does not exist: {self._workspace_root}")
+
+    def map_path(self, path: str | Path) -> str:
+        resolved = Path(path).resolve()
+        try:
+            relative = resolved.relative_to(self._workspace_root)
+        except ValueError as error:
+            raise ValueError(
+                f"Docker Freqtrade paths must remain inside {self._workspace_root}: {resolved}"
+            ) from error
+        return str(PurePosixPath("/workspace", *relative.parts))
+
+    def run(self, command: Sequence[str], *, cwd: Path, timeout: int) -> ProcessResult:
+        if not command or command[0] != "freqtrade":
+            raise ValueError("Docker runner accepts only the Freqtrade executable")
+        self.map_path(cwd)
+        resolved_docker = shutil.which(self._docker_executable)
+        if resolved_docker is None and self._docker_executable == "docker" and os.name == "nt":
+            local_app_data = os.environ.get("LOCALAPPDATA")
+            if local_app_data:
+                desktop_cli = (
+                    Path(local_app_data)
+                    / "Programs"
+                    / "DockerDesktop"
+                    / "resources"
+                    / "bin"
+                    / "docker.exe"
+                )
+                try:
+                    if desktop_cli.is_file():
+                        resolved_docker = str(desktop_cli)
+                except OSError:
+                    pass
+        if resolved_docker is None:
+            raise FreqtradeUnavailableError(
+                f"Docker executable {self._docker_executable!r} is not installed or not on PATH"
+            )
+        docker_command = (
+            resolved_docker,
+            "compose",
+            "--project-directory",
+            str(self._compose_file.parent),
+            "--file",
+            str(self._compose_file),
+            "run",
+            "--rm",
+            "--no-deps",
+            "-T",
+            "freqtrade",
+            *command[1:],
+        )
+        environment = os.environ.copy()
+        environment["BOTNET_COUNCIL_WORKSPACE"] = str(self._workspace_root)
+        completed = subprocess.run(
+            docker_command,
+            cwd=self._compose_file.parent,
+            env=environment,
+            capture_output=True,
+            check=False,
+            shell=False,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
         return ProcessResult(completed.returncode, completed.stdout, completed.stderr)
@@ -96,8 +183,12 @@ class FreqtradeBacktestEngine:
         config_path.write_text(_canonical_json(config), encoding="utf-8")
         command = self._base_command(request, config_path, "backtesting")
         command.extend(("--export", "trades", "--cache", "none"))
-        command.extend(("--backtest-directory", str(result_directory)))
+        command.extend(("--backtest-directory", self._runtime_path(result_directory)))
         completed = self._runner.run(command, cwd=run_directory, timeout=self._timeout)
+        transcript = run_directory / "process.txt"
+        transcript.write_text(
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}", encoding="utf-8"
+        )
         if completed.returncode != 0:
             raise FreqtradeProcessError(command, completed.returncode, completed.stderr)
         artifact = _single_result_artifact(result_directory)
@@ -121,7 +212,9 @@ class FreqtradeBacktestEngine:
         )
         csv_path = run_directory / f"{kind.value}.csv"
         if kind is ValidationKind.LOOKAHEAD:
-            command.extend(("--lookahead-analysis-exportfilename", str(csv_path)))
+            command.extend(
+                ("--lookahead-analysis-exportfilename", self._runtime_path(csv_path))
+            )
         completed = self._runner.run(command, cwd=run_directory, timeout=self._timeout)
         transcript = run_directory / f"{kind.value}.txt"
         transcript.write_text(
@@ -178,13 +271,13 @@ class FreqtradeBacktestEngine:
             subcommand,
             "--no-color",
             "--config",
-            str(config_path),
+            self._runtime_path(config_path),
             "--datadir",
-            str(request.data_directory),
+            self._runtime_path(request.data_directory),
             "--strategy",
             request.strategy.strategy_name,
             "--strategy-path",
-            str(request.strategy.strategy_path),
+            self._runtime_path(request.strategy.strategy_path),
             "--timeframe",
             request.timeframe,
             "--timerange",
@@ -203,8 +296,11 @@ class FreqtradeBacktestEngine:
             )
         return command
 
-    @staticmethod
-    def _effective_config(request: AuthoritativeBacktestRequest) -> dict[str, Any]:
+    def _runtime_path(self, path: str | Path) -> str:
+        mapper = getattr(self._runner, "map_path", None)
+        return str(path) if mapper is None else str(mapper(path))
+
+    def _effective_config(self, request: AuthoritativeBacktestRequest) -> dict[str, Any]:
         supplied = dict(request.engine_configuration)
         protected = {
             "dry_run",
@@ -217,6 +313,8 @@ class FreqtradeBacktestEngine:
             "exchange",
             "pairlists",
             "order_types",
+            "entry_pricing",
+            "exit_pricing",
             "bot_name",
             "botnet_council_seed",
             "botnet_council_dataset_id",
@@ -229,6 +327,16 @@ class FreqtradeBacktestEngine:
                 f"engine_configuration cannot override safety fields: {sorted(forbidden)}"
             )
         exchange_name = str(supplied.pop("exchange_name", "kraken"))
+        order_types: dict[str, str | bool] = {
+            "entry": "market",
+            "exit": "market",
+            "emergency_exit": "market",
+            "force_entry": "market",
+            "force_exit": "market",
+            "stoploss": "market",
+            "stoploss_on_exchange": False,
+        }
+        order_types.update(request.order_types)
         config: dict[str, Any] = {
             "dry_run": True,
             "trading_mode": "spot",
@@ -243,14 +351,16 @@ class FreqtradeBacktestEngine:
                 "pair_blacklist": [],
             },
             "pairlists": [{"method": "StaticPairList"}],
-            "order_types": dict(request.order_types),
+            "order_types": order_types,
+            "entry_pricing": {"price_side": "other", "use_order_book": False},
+            "exit_pricing": {"price_side": "other", "use_order_book": False},
             "bot_name": f"botnet-council-{request.request_id[:12]}",
             "botnet_council_seed": request.seed,
             "botnet_council_dataset_id": request.dataset_id,
             "botnet_council_context": dict(request.context_configuration),
         }
         if request.strategy.signal_artifact is not None:
-            config["botnet_council_signal_artifact"] = str(
+            config["botnet_council_signal_artifact"] = self._runtime_path(
                 request.strategy.signal_artifact
             )
         config.update(supplied)
@@ -258,7 +368,7 @@ class FreqtradeBacktestEngine:
 
 
 def _timerange(start: datetime, end: datetime) -> str:
-    return f"{start.astimezone(UTC):%Y%m%d-%H%M}-{end.astimezone(UTC):%Y%m%d-%H%M}"
+    return f"{start.astimezone(UTC):%Y%m%dT%H%M}-{end.astimezone(UTC):%Y%m%dT%H%M}"
 
 
 def _canonical_json(value: Mapping[str, Any]) -> str:

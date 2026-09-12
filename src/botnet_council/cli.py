@@ -18,6 +18,7 @@ from botnet_council.backtest import (
     AuthoritativeBacktestRequest,
     BacktestConfig,
     BacktestEngine,
+    DockerComposeCommandRunner,
     FreqtradeBacktestEngine,
     ValidationKind,
     persist_backtest,
@@ -196,7 +197,14 @@ def run_freqtrade(args: argparse.Namespace) -> None:
     request = AuthoritativeBacktestRequest.model_validate_json(
         request_path.read_text(encoding="utf-8")
     )
-    engine = FreqtradeBacktestEngine(executable=cast(str, args.executable))
+    runner = None
+    if args.docker_compose is not None:
+        runner = DockerComposeCommandRunner(
+            cast(str, args.docker_compose), cast(str, args.workspace_root)
+        )
+    engine = FreqtradeBacktestEngine(
+        executable=cast(str, args.executable), runner=runner
+    )
     if args.validation is None:
         print(engine.run(request).model_dump_json(indent=2))
     else:
@@ -235,6 +243,15 @@ def main() -> None:
     )
     freqtrade.add_argument("--request", required=True, help="path to the request JSON")
     freqtrade.add_argument("--executable", default="freqtrade")
+    freqtrade.add_argument(
+        "--docker-compose",
+        help="run Freqtrade through the isolated Compose service",
+    )
+    freqtrade.add_argument(
+        "--workspace-root",
+        default=".",
+        help="host workspace mounted read-write at /workspace in Docker",
+    )
     freqtrade.add_argument(
         "--validation", choices=tuple(item.value for item in ValidationKind)
     )
