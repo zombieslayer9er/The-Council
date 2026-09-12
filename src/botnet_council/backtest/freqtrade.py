@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import shutil
 import subprocess
 import zipfile
@@ -602,12 +603,11 @@ def _parse_export_datetime(value: Any) -> datetime:
 
 
 def _timeframe_duration(timeframe: str) -> timedelta:
-    if len(timeframe) < 2 or not timeframe[:-1].isdigit():
-        raise ValueError("unknown timeframe")
-    count = int(timeframe[:-1])
-    unit = timeframe[-1]
-    if count <= 0:
-        raise ValueError("unknown timeframe")
+    match = re.fullmatch(r"([1-9][0-9]*)([mhdw])", timeframe)
+    if match is None:
+        raise ValueError(f"unknown timeframe: {timeframe}")
+    count = int(match.group(1))
+    unit = match.group(2)
     return {
         "m": timedelta(minutes=count),
         "h": timedelta(hours=count),

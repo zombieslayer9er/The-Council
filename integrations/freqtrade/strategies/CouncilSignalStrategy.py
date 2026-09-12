@@ -75,26 +75,6 @@ class CouncilSignalStrategy(IStrategy):
             pair_rows[candle_at] = row
         return indexed
 
-
-def _parse_datetime(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError("Council signal timestamps must be timezone-aware")
-    return parsed.astimezone(UTC)
-
-
-def _timeframe_duration(timeframe: str) -> timedelta:
-    match = re.fullmatch(r"([1-9][0-9]*)([mhdw])", timeframe)
-    if match is None:
-        raise ValueError(f"unknown timeframe: {timeframe}")
-    count = int(match.group(1))
-    return {
-        "m": timedelta(minutes=count),
-        "h": timedelta(hours=count),
-        "d": timedelta(days=count),
-        "w": timedelta(weeks=count),
-    }[match.group(2)]
-
     def populate_indicators(self, dataframe: DataFrame, metadata: dict[str, Any]) -> DataFrame:
         return dataframe
 
@@ -125,3 +105,23 @@ def _timeframe_duration(timeframe: str) -> timedelta:
             lambda value: rows.get(value, {}).get("signal_tag")
         )
         return dataframe
+
+
+def _parse_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("Council signal timestamps must be timezone-aware")
+    return parsed.astimezone(UTC)
+
+
+def _timeframe_duration(timeframe: str) -> timedelta:
+    match = re.fullmatch(r"([1-9][0-9]*)([mhdw])", timeframe)
+    if match is None:
+        raise ValueError(f"unknown timeframe: {timeframe}")
+    count = int(match.group(1))
+    return {
+        "m": timedelta(minutes=count),
+        "h": timedelta(hours=count),
+        "d": timedelta(days=count),
+        "w": timedelta(weeks=count),
+    }[match.group(2)]

@@ -272,3 +272,17 @@ def test_freqtrade_signal_adapter_rejects_candle_before_decision_availability(
                 decision.decision_id: decision.source_as_of - timedelta(days=1)
             },
         )
+
+
+def test_standalone_freqtrade_strategy_keeps_strategy_methods_and_version() -> None:
+    import ast
+
+    source = Path("integrations/freqtrade/strategies/CouncilSignalStrategy.py").read_text(
+        encoding="utf-8"
+    )
+    module = ast.parse(source)
+    classes = [node for node in module.body if isinstance(node, ast.ClassDef)]
+    assert [item.name for item in classes] == ["CouncilSignalStrategy"]
+    methods = {node.name for node in classes[0].body if isinstance(node, ast.FunctionDef)}
+    assert {"populate_indicators", "populate_entry_trend", "populate_exit_trend"} <= methods
+    assert f'"{CouncilDecisionStrategyAdapter().adapter_version}"' in source
