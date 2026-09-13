@@ -121,7 +121,7 @@ def create_app(
     experiments = experiment_service or _default_experiment_service()
     experiences = experience_store or _configured_experience_store()
     weights = weight_store or _configured_weight_store()
-    historical = historical_service or _default_historical_service(telemetry)
+    historical = historical_service or _default_historical_service(telemetry, experiences)
     control_token = command_token or os.environ.get(CONTROL_TOKEN_ENVIRONMENT_VARIABLE)
     if control_token is not None and len(control_token) < MINIMUM_CONTROL_TOKEN_LENGTH:
         raise ValueError("command_token must contain at least 32 characters")
@@ -413,12 +413,18 @@ def create_app(
             raise HTTPException(404, str(error)) from error
         return {"api_version": API_VERSION, "scenario": to_jsonable(scenario)}
 
+    @app.get("/api/historical/scenarios")
+    async def historical_scenarios() -> dict[str, Any]:
+        return {"api_version": API_VERSION, "items": to_jsonable(historical.scenarios())}
+
     @app.post(
         "/api/control/historical/scenarios/{scenario_id}/runs",
         status_code=202,
         dependencies=[Depends(require_command_access)],
     )
     async def start_historical_run(scenario_id: str) -> dict[str, Any]:
+        if not historical.learning_configured:
+            raise HTTPException(503, "experience store is not configured")
         try:
             operation = historical.start_backtest(scenario_id)
         except LookupError as error:
@@ -432,6 +438,14 @@ def create_app(
         except LookupError as error:
             raise HTTPException(404, str(error)) from error
         return {"api_version": API_VERSION, "operation": to_jsonable(operation)}
+
+    @app.get("/api/historical/operations")
+    async def historical_operations() -> dict[str, Any]:
+        return {"api_version": API_VERSION, "items": to_jsonable(historical.operations())}
+
+    @app.get("/api/historical/statistics")
+    async def historical_statistics() -> dict[str, Any]:
+        return {"api_version": API_VERSION, "statistics": historical.statistics()}
 
     @app.post(
         "/api/control/historical/operations/{operation_id}/cancel",
@@ -482,6 +496,20 @@ def create_app(
                 "benchmark": to_jsonable(run.result.benchmark),
                 "warnings": run.result.warnings,
             },
+        }
+
+    @app.get("/api/historical/operations/{operation_id}/artifacts")
+    async def historical_artifacts(operation_id: str) -> dict[str, Any]:
+        run = completed_historical_run(operation_id)
+        operation = historical.operation(operation_id)
+        if operation.scenario_id is None:
+            raise HTTPException(409, "historical operation has no scenario")
+        return {
+            "api_version": API_VERSION,
+            "operation": to_jsonable(operation),
+            "scenario": to_jsonable(historical.scenario(operation.scenario_id)),
+            "run": to_jsonable(run),
+            "candles": to_jsonable(historical.candles(operation_id)),
         }
 
     @app.get(
@@ -796,7 +824,9 @@ def _default_experiment_service() -> ExperimentService:
     return ExperimentService(provider, FileExperimentRepository(Path("experiment-results")))
 
 
-def _default_historical_service(telemetry: InMemoryEventBus) -> HistoricalScenarioService:
+def _default_historical_service(
+    telemetry: InMemoryEventBus, experiences: ExperienceStore | None
+) -> HistoricalScenarioService:
     root = Path.cwd()
     compose_file = root / "integrations" / "freqtrade" / "compose.yaml"
     provider = FreqtradeHistoricalProvider(
@@ -810,6 +840,7 @@ def _default_historical_service(telemetry: InMemoryEventBus) -> HistoricalScenar
         ParquetMarketDataCache(root / ".market-data-cache"),
         root / "historical-results",
         telemetry=telemetry,
+        experience_store=experiences,
     )
 
 

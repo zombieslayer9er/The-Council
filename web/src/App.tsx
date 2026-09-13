@@ -12,10 +12,12 @@ import { applyBootstrap, beginResync, bufferEvent, emptyLiveState, failLive, typ
 import { RequestGate } from './requestGate';
 import { agentLabel, money, percent, project, shortTime } from './model';
 import { EvidenceView, LearningView, OutcomesView } from './researchViews';
+import { HistoricalView } from './historicalView';
 
-type View = 'live' | 'evidence' | 'learning' | 'outcomes' | 'history' | 'backtests' | 'portfolio' | 'system';
+type View = 'historical' | 'live' | 'evidence' | 'learning' | 'outcomes' | 'history' | 'backtests' | 'portfolio' | 'system';
 
 const NAV: { key: View; label: string; icon: string }[] = [
+  { key: 'historical', label: 'Historical Lab', icon: '◩' },
   { key: 'live', label: 'Live Council', icon: '⬡' },
   { key: 'evidence', label: 'Evidence', icon: '⊛' },
   { key: 'learning', label: 'Learning', icon: '⌁' },
@@ -122,7 +124,7 @@ export default function App() {
         </nav>
         <div className="sidebar-foot">
           <StatusDot status={displayStatus} />
-          <div className="paper-card"><strong>PAPER / RESEARCH</strong><span>Read-only. No live orders.</span></div>
+          <div className="paper-card"><strong>PAPER / RESEARCH</strong><span>{health?.capabilities.includes('historical_control') ? 'Authenticated experiments. No live orders.' : 'Read-only. No live orders.'}</span></div>
         </div>
       </aside>
 
@@ -143,6 +145,7 @@ export default function App() {
         {researchError && <div className="error-banner research-error" role="status"><span>Research evidence: {researchError}</span><button onClick={() => void resync(false)}>Retry</button></div>}
 
         <div className="content">
+          {view === 'historical' && <HistoricalView controlEnabled={health?.capabilities.includes('historical_control') ?? false} />}
           {view === 'live' && <LiveView data={data} connection={live.status} loading={live.status === 'bootstrapping' || live.status === 'resynchronizing'} />}
           {view === 'evidence' && <EvidenceView context={data.context} signals={data.signals} />}
           {view === 'learning' && <LearningView research={research} />}

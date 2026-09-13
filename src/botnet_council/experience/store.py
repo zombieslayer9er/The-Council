@@ -47,6 +47,13 @@ class CacheWriteStatus(StrEnum):
     HIT = "hit"
 
 
+class ExperienceOrigin(StrEnum):
+    USER_INITIATED = "user_initiated"
+    AUTOMATED = "automated"
+    TRAINING = "training"
+    REPLAY = "replay"
+
+
 class ExperienceStore:
     """Content-addressed payloads plus queryable, replace-never metadata."""
 
@@ -138,6 +145,52 @@ class ExperienceStore:
             asset_class=asset_class,
         )
         return episode, self.save(episode)
+
+    def save_learning_episode(
+        self,
+        episode: ExperienceEpisode,
+        *,
+        origin: ExperienceOrigin,
+        source_run_id: str,
+    ) -> CacheWriteStatus:
+        """Persist one canonical episode and its immutable learning-source metadata."""
+        self.save(episode)
+        with self._lock, self._connection() as connection:
+            row = connection.execute(
+                "SELECT origin, source_run_id FROM episode_sources WHERE episode_id = ?",
+                (episode.episode_id,),
+            ).fetchone()
+            expected = (origin.value, source_run_id)
+            if row is not None and (str(row[0]), str(row[1])) != expected:
+                raise ExperienceCorruptionError(
+                    "stored episode source conflicts with immutable learning metadata"
+                )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO episode_sources (
+                    episode_id, origin, source_run_id, accepted_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (episode.episode_id, origin.value, source_run_id, _time_text(datetime.now(UTC))),
+            )
+            connection.commit()
+        return CacheWriteStatus.HIT if row is not None else CacheWriteStatus.STORED
+
+    def learning_statistics(self) -> dict[str, int]:
+        with self._connection() as connection:
+            current = int(connection.execute("SELECT COUNT(*) FROM episodes").fetchone()[0])
+            rows = connection.execute(
+                "SELECT origin, COUNT(*) FROM episode_sources GROUP BY origin"
+            ).fetchall()
+        by_origin = {str(origin): int(count) for origin, count in rows}
+        return {
+            "current_experience_set": current,
+            "learning_episodes_accepted": sum(by_origin.values()),
+            "user_initiated_learning_episodes": by_origin.get(
+                ExperienceOrigin.USER_INITIATED.value, 0
+            ),
+            "automated_learning_episodes": by_origin.get(ExperienceOrigin.AUTOMATED.value, 0),
+        }
 
     def get(self, episode_id: str) -> ExperienceEpisode:
         _validate_identity(episode_id, "episode_id")
@@ -308,6 +361,16 @@ class ExperienceStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_episode_decision_cache "
                 "ON episodes (decision_cache_key)"
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS episode_sources (
+                    episode_id TEXT PRIMARY KEY REFERENCES episodes (episode_id),
+                    origin TEXT NOT NULL,
+                    source_run_id TEXT NOT NULL,
+                    accepted_at TEXT NOT NULL
+                )
+                """
             )
             connection.commit()
 

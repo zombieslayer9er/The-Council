@@ -9,14 +9,21 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from botnet_council.backtest.models import to_jsonable
+from botnet_council.backtest.models import BacktestConfig, BacktestRun, to_jsonable
 from botnet_council.council import CouncilConfig
 from botnet_council.experiments import ExperimentRecord, ExperimentState
-from botnet_council.experiments.models import ForecastEvaluation, OracleOutcome
+from botnet_council.experiments.models import (
+    ForecastEvaluation,
+    OracleOutcome,
+    OracleProvenance,
+)
+from botnet_council.market_data import HistoricalRequest, Timeframe
 from botnet_council.schemas import (
     AgentSignal,
     CouncilDecision,
+    Direction,
     ExecutionReport,
+    MarketBar,
     MarketSnapshot,
     PortfolioState,
     RiskDecision,
@@ -279,6 +286,162 @@ def episode_from_experiment(
         available_at=record.evaluation.evaluated_at,
     )
     return ExperienceEpisode(evidence=evidence, truth=truth)
+
+
+def episodes_from_backtest(
+    run: BacktestRun,
+    config: BacktestConfig,
+    candles: tuple[MarketBar, ...],
+) -> tuple[ExperienceEpisode, ...]:
+    """Convert complete, causally measurable backtest decisions into episodes."""
+    timeframe = Timeframe(config.timeframe)
+    by_close = {bar.closed_at: bar for bar in candles}
+    executions = {
+        event.execution_report.authorization_id: event.execution_report
+        for event in run.ledger.events
+        if event.execution_report is not None
+    }
+    provenance = run.result.market_data_provenance
+    weight_generation_id = f"backtest-weights:{_identity(to_jsonable(config.council))}"
+    risk_policy_version = f"backtest-risk:{_identity(to_jsonable(config.risk))}"
+    episodes: list[ExperienceEpisode] = []
+    for event in run.ledger.events:
+        decision = event.council_decision
+        snapshot = event.snapshot
+        if not event.measured or decision is None or snapshot is None:
+            continue
+        horizons = {signal.horizon_bars for signal in decision.signals}
+        if len(horizons) != 1 or decision.decided_at != snapshot.as_of:
+            continue
+        horizon_bars = horizons.pop()
+        horizon_end = decision.decided_at + timeframe.duration * horizon_bars
+        start = by_close.get(decision.decided_at)
+        endpoint = by_close.get(horizon_end)
+        path = tuple(
+            bar
+            for bar in candles
+            if decision.decided_at < bar.closed_at <= horizon_end
+        )
+        if (
+            start is None
+            or endpoint is None
+            or len(path) != horizon_bars
+            or any(bar.available_at > horizon_end for bar in path)
+        ):
+            continue
+        realized_return = endpoint.close / start.close - 1.0
+        realized_direction = (
+            Direction.LONG
+            if realized_return > 0
+            else Direction.SHORT
+            if realized_return < 0
+            else Direction.FLAT
+        )
+        experiment_id = _identity(
+            {
+                "run_id": run.result.run_id,
+                "decision_id": decision.decision_id,
+                "horizon_end": to_jsonable(horizon_end),
+            }
+        )[:24]
+        oracle = OracleOutcome(
+            experiment_id=experiment_id,
+            evaluation_time=decision.decided_at,
+            horizon_end=horizon_end,
+            start_price=start.close,
+            endpoint_price=endpoint.close,
+            realized_return=realized_return,
+            realized_direction=realized_direction,
+            maximum_favorable_excursion=max(bar.high / start.close - 1.0 for bar in path),
+            maximum_adverse_excursion=min(bar.low / start.close - 1.0 for bar in path),
+            provenance=OracleProvenance(
+                request=HistoricalRequest(
+                    instrument=provenance.request.instrument,
+                    timeframe=timeframe,
+                    start=decision.decided_at - timeframe.duration,
+                    end=horizon_end,
+                    as_of=horizon_end,
+                    market=provenance.request.market,
+                ),
+                provider=provenance.provider,
+                fetched_at=provenance.fetched_at,
+                source_version=provenance.source_version,
+                adapter_semantic_version=provenance.adapter_semantic_version,
+                cache_key=provenance.cache_key,
+                content_identity=provenance.content_identity,
+            ),
+            horizon_complete=True,
+        )
+        signed_error = (
+            None
+            if decision.expected_return is None
+            else decision.expected_return - realized_return
+        )
+        bucket_start = min(int(decision.confidence * 10), 9) * 10
+        evaluation = ForecastEvaluation(
+            experiment_id=experiment_id,
+            forecast_id=decision.decision_id,
+            directional_correctness=decision.forecast_direction is realized_direction,
+            forecast_direction=decision.forecast_direction,
+            realized_direction=realized_direction,
+            expected_return=decision.expected_return,
+            realized_return=realized_return,
+            absolute_return_error=None if signed_error is None else abs(signed_error),
+            signed_return_error=signed_error,
+            confidence=decision.confidence,
+            calibration_bucket=f"{bucket_start:02d}-{bucket_start + 10:02d}%",
+            evaluated_at=horizon_end,
+        )
+        risk = event.risk_decision
+        authorization_id = (
+            None if risk is None or risk.approved_order is None
+            else risk.approved_order.authorization_id
+        )
+        evidence = DecisionEvidence(
+            symbol=decision.symbol,
+            asset_class="crypto",
+            timeframe=decision.timeframe,
+            decision_timestamp=decision.decided_at,
+            market_data_content_identity=provenance.content_identity,
+            market_data_version=(
+                f"{provenance.provider.value}:{provenance.source_version}:"
+                f"{provenance.adapter_semantic_version}"
+            ),
+            snapshot=snapshot,
+            specialist_outputs=decision.signals,
+            agent_versions=tuple(
+                AgentVersion(agent_id=item.agent_id, version=item.agent_version)
+                for item in decision.signals
+            ),
+            council_config=config.council,
+            applied_weights=tuple(
+                AppliedWeight(
+                    agent_id=item.agent_id,
+                    weight=config.council.agent_weights.get(item.agent_id, 1.0),
+                )
+                for item in decision.signals
+            ),
+            weight_generation_id=weight_generation_id,
+            council_decision=decision,
+            risk_policy_version=risk_policy_version,
+            risk_decision=risk,
+            execution_report=(
+                None if authorization_id is None else executions.get(authorization_id)
+            ),
+            portfolio_state=event.portfolio,
+            backtest_run_id=run.result.run_id,
+        )
+        episodes.append(
+            ExperienceEpisode(
+                evidence=evidence,
+                truth=OutcomeTruth(
+                    oracle_outcome=oracle,
+                    judge_evaluation=evaluation,
+                    available_at=horizon_end,
+                ),
+            )
+        )
+    return tuple(episodes)
 
 
 def _episode_material(evidence: DecisionEvidence, truth: OutcomeTruth | None) -> object:

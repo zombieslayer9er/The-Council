@@ -23,6 +23,12 @@ from botnet_council.backtest import (
     persist_backtest,
 )
 from botnet_council.backtest.models import to_jsonable
+from botnet_council.experience import (
+    CacheWriteStatus,
+    ExperienceOrigin,
+    ExperienceStore,
+    episodes_from_backtest,
+)
 from botnet_council.market_data import (
     Asset,
     CachedHistoricalProvider,
@@ -150,6 +156,13 @@ class OperationStatus(StrEnum):
     FAILED = "failed"
 
 
+class LearningStatus(StrEnum):
+    NOT_APPLICABLE = "not_applicable"
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
 class HistoricalOperation(ScenarioModel):
     operation_id: str
     kind: OperationKind
@@ -162,6 +175,11 @@ class HistoricalOperation(ScenarioModel):
     scenario_id: str | None = None
     result_run_id: str | None = None
     error: str | None = None
+    learning_status: LearningStatus = LearningStatus.NOT_APPLICABLE
+    learning_eligible: bool = False
+    learning_episode_ids: tuple[str, ...] = ()
+    learning_episodes_rejected: int = Field(default=0, ge=0)
+    learning_message: str | None = None
 
 
 class HistoricalScenarioService:
@@ -172,6 +190,7 @@ class HistoricalScenarioService:
         result_root: str | Path,
         *,
         telemetry: EventPublisher | None = None,
+        experience_store: ExperienceStore | None = None,
         clock: Any | None = None,
     ) -> None:
         self._providers = dict(providers)
@@ -180,6 +199,7 @@ class HistoricalScenarioService:
         self._scenario_root = self._result_root / "scenarios"
         self._operation_root = self._result_root / "operations"
         self._telemetry = telemetry
+        self._experience_store = experience_store
         self._clock = clock or (lambda: datetime.now(UTC))
         self._lock = RLock()
         self._scenarios: dict[str, HistoricalScenario] = {}
@@ -258,6 +278,16 @@ class HistoricalScenarioService:
             except KeyError as error:
                 raise LookupError("historical scenario was not found") from error
 
+    def scenarios(self) -> tuple[HistoricalScenario, ...]:
+        """Return persisted scenario definitions in stable creation order."""
+        with self._lock:
+            return tuple(
+                sorted(
+                    self._scenarios.values(),
+                    key=lambda item: (item.created_at, item.scenario_id),
+                )
+            )
+
     def start_acquisition(self, request: HistoricalAcquisitionRequest) -> HistoricalOperation:
         self._provider(request.provider)
         operation = self._new_operation(OperationKind.ACQUISITION)
@@ -280,12 +310,56 @@ class HistoricalScenarioService:
         ).start()
         return operation
 
+    @property
+    def learning_configured(self) -> bool:
+        return self._experience_store is not None
+
     def operation(self, operation_id: str) -> HistoricalOperation:
         with self._lock:
             try:
                 return self._operations[operation_id]
             except KeyError as error:
                 raise LookupError("historical operation was not found") from error
+
+    def operations(self) -> tuple[HistoricalOperation, ...]:
+        """Return reconstructable operation state in stable creation order."""
+        with self._lock:
+            return tuple(
+                sorted(
+                    self._operations.values(),
+                    key=lambda item: (item.created_at, item.operation_id),
+                )
+            )
+
+    def statistics(self) -> dict[str, int]:
+        operations = tuple(
+            item for item in self.operations() if item.kind is OperationKind.BACKTEST
+        )
+        store = (
+            self._experience_store.learning_statistics()
+            if self._experience_store is not None
+            else {
+                "current_experience_set": 0,
+                "learning_episodes_accepted": 0,
+                "user_initiated_learning_episodes": 0,
+                "automated_learning_episodes": 0,
+            }
+        )
+        return {
+            "total_tests_executed": len(operations),
+            "successful_completed_tests": sum(
+                item.status is OperationStatus.COMPLETED for item in operations
+            ),
+            "failed_cancelled_tests": sum(
+                item.status in {OperationStatus.FAILED, OperationStatus.CANCELLED}
+                for item in operations
+            ),
+            "learning_eligible_tests": sum(item.learning_eligible for item in operations),
+            "learning_episodes_rejected": sum(
+                item.learning_episodes_rejected for item in operations
+            ),
+            **store,
+        }
 
     def cancel(self, operation_id: str) -> HistoricalOperation:
         operation = self.operation(operation_id)
@@ -309,17 +383,7 @@ class HistoricalScenarioService:
             return self._results[operation_id]
 
     def candles(self, operation_id: str) -> tuple[MarketBar, ...]:
-        run = self.result(operation_id)
-        provenance = run.result.market_data_provenance
-        loaded = self._cache.load(
-            provenance.provider,
-            provenance.request,
-            expected_source_version=provenance.source_version,
-            expected_adapter_semantic_version=provenance.adapter_semantic_version,
-        )
-        if loaded is None:
-            raise LookupError("immutable run market-data snapshot is unavailable")
-        return loaded.bars
+        return self._candles_for_run(self.result(operation_id))
 
     def council_outputs(self, operation_id: str) -> tuple[CouncilDecision, ...]:
         return tuple(
@@ -342,6 +406,11 @@ class HistoricalScenarioService:
             current=0,
             total=0,
             scenario_id=scenario_id,
+            learning_status=(
+                LearningStatus.PENDING
+                if kind is OperationKind.BACKTEST
+                else LearningStatus.NOT_APPLICABLE
+            ),
         )
         with self._lock:
             self._operations[operation.operation_id] = operation
@@ -403,20 +472,86 @@ class HistoricalScenarioService:
                     self._operation_root / f"{operation_id}.result.json",
                     to_jsonable(run),
                 )
+            try:
+                learning = self._record_learning(run, config)
+            except Exception as error:
+                learning = {
+                    "learning_status": LearningStatus.REJECTED,
+                    "learning_message": f"{type(error).__name__}: learning acceptance failed",
+                }
             self._update(
                 operation_id,
                 status=OperationStatus.COMPLETED,
                 progress=1,
                 result_run_id=run.result.run_id,
+                **learning,
             )
         except BacktestCancelledError:
-            self._update(operation_id, status=OperationStatus.CANCELLED)
+            self._update(
+                operation_id,
+                status=OperationStatus.CANCELLED,
+                learning_status=LearningStatus.REJECTED,
+                learning_message="cancelled runs are not learning eligible",
+            )
         except Exception as error:
             self._update(
                 operation_id,
                 status=OperationStatus.FAILED,
                 error=f"{type(error).__name__}: historical backtest failed",
+                learning_status=LearningStatus.REJECTED,
+                learning_message="failed runs are not learning eligible",
             )
+
+    def _record_learning(self, run: BacktestRun, config: BacktestConfig) -> dict[str, Any]:
+        candidates = sum(
+            event.measured and event.council_decision is not None
+            for event in run.ledger.events
+        )
+        episodes = episodes_from_backtest(run, config, self._candles_for_run(run))
+        rejected = candidates - len(episodes)
+        if self._experience_store is None:
+            return {
+                "learning_status": LearningStatus.REJECTED,
+                "learning_eligible": bool(episodes),
+                "learning_episodes_rejected": rejected + len(episodes),
+                "learning_message": "experience store is not configured",
+            }
+        accepted: list[str] = []
+        for episode in episodes:
+            status = self._experience_store.save_learning_episode(
+                episode,
+                origin=ExperienceOrigin.USER_INITIATED,
+                source_run_id=run.result.run_id,
+            )
+            if status is CacheWriteStatus.STORED:
+                accepted.append(episode.episode_id)
+            else:
+                rejected += 1
+        return {
+            "learning_status": (
+                LearningStatus.ACCEPTED if accepted else LearningStatus.REJECTED
+            ),
+            "learning_eligible": bool(episodes),
+            "learning_episode_ids": tuple(accepted),
+            "learning_episodes_rejected": rejected,
+            "learning_message": (
+                "episode persisted in the canonical experience dataset"
+                if accepted
+                else "no new episode was accepted; outcome was incomplete or already learned"
+            ),
+        }
+
+    def _candles_for_run(self, run: BacktestRun) -> tuple[MarketBar, ...]:
+        provenance = run.result.market_data_provenance
+        loaded = self._cache.load(
+            provenance.provider,
+            provenance.request,
+            expected_source_version=provenance.source_version,
+            expected_adapter_semantic_version=provenance.adapter_semantic_version,
+        )
+        if loaded is None:
+            raise LookupError("immutable run market-data snapshot is unavailable")
+        return loaded.bars
 
     def _resolved_config(
         self,
@@ -504,6 +639,16 @@ class HistoricalScenarioService:
                         "status": OperationStatus.FAILED,
                         "updated_at": self._now(),
                         "error": "service restarted before operation completed",
+                        "learning_status": (
+                            LearningStatus.REJECTED
+                            if operation.kind is OperationKind.BACKTEST
+                            else LearningStatus.NOT_APPLICABLE
+                        ),
+                        "learning_message": (
+                            "interrupted runs are not learning eligible"
+                            if operation.kind is OperationKind.BACKTEST
+                            else None
+                        ),
                     }
                 )
             self._operations[operation.operation_id] = operation
