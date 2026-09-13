@@ -9,6 +9,7 @@ export class BackendProblem extends Error {
 export async function requestJson(path: string, init?: RequestInit): Promise<unknown> {
   const url = backendUrl(path);
   const options: RequestInit & { targetAddressSpace?: 'loopback' } = {
+    ...(configuredBaseUrl ? { credentials: 'include' as const } : {}),
     ...init,
     headers: { Accept: 'application/json', ...init?.headers },
   };

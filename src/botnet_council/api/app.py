@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from hmac import compare_digest
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from anyio import CapacityLimiter, to_thread
@@ -93,6 +94,7 @@ from botnet_council.telemetry.serializers import (
 DEFAULT_WEBSOCKET_QUEUE_LIMIT = 256
 MINIMUM_CONTROL_TOKEN_LENGTH = 32
 CONTROL_TOKEN_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_CONTROL_TOKEN"
+BROWSER_ORIGINS_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_BROWSER_ORIGINS"
 EXPERIENCE_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_EXPERIENCE_STORE"
 WEIGHT_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_WEIGHT_STORE"
 CONTROL_BEARER = HTTPBearer(auto_error=False)
@@ -125,6 +127,7 @@ def create_app(
     weights = weight_store or _configured_weight_store()
     historical = historical_service or _default_historical_service(telemetry, experiences)
     control_token = command_token or os.environ.get(CONTROL_TOKEN_ENVIRONMENT_VARIABLE)
+    allowed_browser_origins = _configured_browser_origins()
     if control_token is not None and len(control_token) < MINIMUM_CONTROL_TOKEN_LENGTH:
         raise ValueError("command_token must contain at least 32 characters")
     app = FastAPI(
@@ -135,8 +138,8 @@ def create_app(
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=sorted(ALLOWED_BROWSER_ORIGINS),
-        allow_credentials=False,
+        allow_origins=sorted(allowed_browser_origins),
+        allow_credentials=True,
         allow_methods=["GET", "POST"],
         allow_headers=["Accept", "Authorization", "Content-Type", "X-Request-ID"],
         allow_private_network=True,
@@ -157,7 +160,7 @@ def create_app(
         if control_token is None:
             raise HTTPException(503, "experiment control is disabled")
         origin = request.headers.get("origin")
-        if origin is not None and origin not in ALLOWED_BROWSER_ORIGINS:
+        if origin is not None and origin not in allowed_browser_origins:
             raise HTTPException(403, "origin is not allowed")
         if (
             credentials is None
@@ -776,7 +779,7 @@ def create_app(
     @app.websocket("/ws/events")
     async def websocket_events(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin")
-        if origin is not None and origin not in ALLOWED_BROWSER_ORIGINS:
+        if origin is not None and origin not in allowed_browser_origins:
             await websocket.close(code=1008, reason="origin is not allowed")
             return
         try:
@@ -826,6 +829,45 @@ def create_app(
             telemetry.unsubscribe(subscription_id)
 
     return app
+
+
+def _configured_browser_origins() -> frozenset[str]:
+    configured = os.environ.get(BROWSER_ORIGINS_ENVIRONMENT_VARIABLE)
+    if configured is None:
+        return ALLOWED_BROWSER_ORIGINS
+    values = [item.strip() for item in configured.split(",")]
+    if not values or any(not item for item in values):
+        raise ValueError(
+            f"{BROWSER_ORIGINS_ENVIRONMENT_VARIABLE} must contain comma-separated origins"
+        )
+    return ALLOWED_BROWSER_ORIGINS | frozenset(_browser_origin(item) for item in values)
+
+
+def _browser_origin(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError(f"invalid browser origin: {value!r}") from error
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname.lower() if parsed.hostname is not None else None
+    if (
+        scheme not in {"http", "https"}
+        or hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or "*" in hostname
+    ):
+        raise ValueError(f"invalid browser origin: {value!r}")
+    if scheme == "http" and hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValueError(f"non-loopback browser origin must use HTTPS: {value!r}")
+    rendered_hostname = f"[{hostname}]" if ":" in hostname else hostname
+    default_port = 80 if scheme == "http" else 443
+    rendered_port = "" if port is None or port == default_port else f":{port}"
+    return f"{scheme}://{rendered_hostname}{rendered_port}"
 
 
 def _default_experiment_service() -> ExperimentService:

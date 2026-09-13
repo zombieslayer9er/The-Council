@@ -7,9 +7,10 @@ observations until the forecast has been locked.
 
 Experiment control is disabled by default. Set a strong `BOTNET_COUNCIL_CONTROL_TOKEN` and send
 it as a bearer credential to enable command routes. Supplied browser Origins are restricted to
-the localhost allowlist. `/api/health` reports `read_only`, `capabilities`, and
-`command_authentication` from the effective policy rather than describing the service as always
-read-only.
+the built-in local/private-site allowlist plus exact HTTPS origins supplied through the optional
+comma-separated `BOTNET_COUNCIL_BROWSER_ORIGINS` setting. `/api/health` reports `read_only`,
+`capabilities`, and `command_authentication` from the effective policy rather than describing the
+service as always read-only.
 
 The telemetry package is a one-way projection of the authoritative domain models. The domain
 does not import FastAPI, WebSocket, JSON, or frontend code. `ResearchTradingPipeline` and
@@ -122,11 +123,11 @@ increasing after eviction. Each WebSocket has a 256-event outbound queue by defa
 when the app is created. A consumer that exceeds the bound receives `consumer_lagged` when
 possible, is closed with code 1013, and must bootstrap again.
 
-Browser WebSocket origins are limited to `localhost`/`127.0.0.1` on the Vite development port or
-the API port. Non-browser clients without an Origin header remain supported. REST is intended to
-be same-origin through the Vite proxy and the service continues to bind to `127.0.0.1`. Exposing
-the API on another interface requires authentication, authorization, TLS, and an explicit origin
-policy; V0.1 does not provide those controls.
+Browser REST and WebSocket origins are exact-match allowlisted. Non-browser clients without an
+Origin header remain supported. REST is intended to be same-origin through the Vite proxy and the
+service continues to bind to `127.0.0.1`; a remote browser origin must use HTTPS. For an
+outbound-only authenticated route that does not bind the API to the LAN, see
+[cloudflare-tunnel.md](cloudflare-tunnel.md).
 
 Production use needs an
 append-only durable event store with a unique `(stream_id, sequence)` constraint, indexed

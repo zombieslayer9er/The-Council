@@ -181,7 +181,43 @@ def test_private_site_origin_receives_scoped_local_backend_cors() -> None:
     assert preflight.status_code == 200
     assert preflight.headers["access-control-allow-origin"] == PRIVATE_SITE_ORIGIN
     assert preflight.headers["access-control-allow-private-network"] == "true"
+    assert preflight.headers["access-control-allow-credentials"] == "true"
     assert "authorization" in preflight.headers["access-control-allow-headers"].lower()
+
+
+def test_configured_https_origin_applies_to_rest_and_websocket(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tunnel_site_origin = "https://council-ui.example.com"
+    monkeypatch.setenv("BOTNET_COUNCIL_BROWSER_ORIGINS", tunnel_site_origin)
+    client = TestClient(create_app(InMemoryEventBus()))
+
+    health = client.get("/api/health", headers={"origin": tunnel_site_origin})
+    with client.websocket_connect("/ws/events", headers={"origin": tunnel_site_origin}):
+        pass
+
+    assert health.headers["access-control-allow-origin"] == tunnel_site_origin
+    assert health.headers["access-control-allow-credentials"] == "true"
+
+
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "*",
+        "https://*.example.com",
+        "http://council-ui.example.com",
+        "https://council-ui.example.com/path",
+        "https://user:password@council-ui.example.com",
+        "https://council-ui.example.com,",
+    ],
+)
+def test_configured_browser_origins_fail_closed(
+    monkeypatch: pytest.MonkeyPatch, origin: str
+) -> None:
+    monkeypatch.setenv("BOTNET_COUNCIL_BROWSER_ORIGINS", origin)
+
+    with pytest.raises(ValueError, match="browser origin|comma-separated origins"):
+        create_app(InMemoryEventBus())
 
 
 def test_untrusted_origin_receives_no_cors_access() -> None:
