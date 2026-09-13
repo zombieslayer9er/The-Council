@@ -136,16 +136,15 @@ export default function App() {
             <h1>{pageTitle(view, data.decision?.symbol)}</h1>
           </div>
           <div className="top-actions">
-            <span className="sequence">{live.streamId ? `GEN ${live.streamId.slice(0, 8)} · ` : ''}SEQ {live.watermark.toLocaleString()}</span>
-            <button className="secondary" onClick={() => void resync(false)}>↻ Resync</button>
+            {view !== 'historical' && <><span className="sequence">{live.streamId ? `GEN ${live.streamId.slice(0, 8)} · ` : ''}SEQ {live.watermark.toLocaleString()}</span><button className="secondary" onClick={() => void resync(false)}>↻ Resync</button></>}
           </div>
         </header>
 
-        {live.error && <div className="error-banner" role="alert"><span>{live.error}</span><button onClick={() => void resync(false)}>Retry</button></div>}
+        {live.error && view !== 'historical' && <div className="error-banner" role="alert"><span>{live.error}</span><button onClick={() => void resync(false)}>Retry</button></div>}
         {researchError && <div className="error-banner research-error" role="status"><span>Research evidence: {researchError}</span><button onClick={() => void resync(false)}>Retry</button></div>}
 
         <div className="content">
-          {view === 'historical' && <HistoricalView controlEnabled={health?.capabilities.includes('historical_control') ?? false} />}
+          {view === 'historical' && <HistoricalView controlEnabled={health?.capabilities.includes('historical_control') ?? false} onConnect={() => resync(false)} />}
           {view === 'live' && <LiveView data={data} connection={live.status} loading={live.status === 'bootstrapping' || live.status === 'resynchronizing'} />}
           {view === 'evidence' && <EvidenceView context={data.context} signals={data.signals} />}
           {view === 'learning' && <LearningView research={research} />}
@@ -295,5 +294,5 @@ function PanelTitle({ kicker, title, extra }: { kicker: string; title: string; e
 function SectionTitle({ title, subtitle }: { title: string; subtitle: string }) { return <div className="section-title"><div><p className="eyebrow">Research workspace</p><h2>{title}</h2></div><p>{subtitle}</p></div>; }
 function InlineEmpty({ text }: { text: string }) { return <div className="inline-empty">{text}</div>; }
 function EmptyState({ title, text, action }: { title: string; text: string; action?: React.ReactNode }) { return <div className="empty-state panel"><div className="empty-orbit"><i /></div><p className="eyebrow">Paper research workspace</p><h2>{title}</h2><p>{text}</p>{action ?? <code>python -m botnet_council</code>}</div>; }
-function viewFromHash(): View { const value = location.hash.slice(1) as View; return NAV.some((item) => item.key === value) ? value : 'live'; }
+function viewFromHash(): View { const value = location.hash.slice(1) as View; return NAV.some((item) => item.key === value) ? value : 'historical'; }
 function pageTitle(view: View, symbol?: string) { return view === 'live' ? `${symbol ?? 'Council'} research session` : NAV.find((item) => item.key === view)?.label ?? 'Console'; }

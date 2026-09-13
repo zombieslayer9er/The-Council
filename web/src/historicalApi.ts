@@ -1,3 +1,5 @@
+import { requestJson } from './backend';
+
 export type OperationStatus = 'queued' | 'running' | 'completed' | 'cancelled' | 'failed';
 export type LearningStatus = 'not_applicable' | 'pending' | 'accepted' | 'rejected';
 
@@ -113,54 +115,40 @@ export interface ScenarioDraft {
   agents: readonly string[];
 }
 
-async function request(path: string, init?: RequestInit): Promise<unknown> {
-  const response = await fetch(path, {
-    ...init,
-    headers: { Accept: 'application/json', ...init?.headers },
-  });
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message = record(body) && record(body.error) && typeof body.error.message === 'string'
-      ? body.error.message : `Request failed (${response.status})`;
-    throw new Error(message);
-  }
-  return body;
-}
-
 function auth(token: string): HeadersInit {
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 }
 
 export async function loadHistoricalProviders(signal?: AbortSignal): Promise<readonly HistoricalProvider[]> {
-  return list(await request('/api/historical/providers', { signal }), 'items').map(provider);
+  return list(await requestJson('/api/historical/providers', { signal }), 'items').map(provider);
 }
 
 export async function loadHistoricalPairs(providerId: string, market: string, signal?: AbortSignal): Promise<readonly HistoricalPair[]> {
   const path = `/api/historical/providers/${encodeURIComponent(providerId)}/markets/${encodeURIComponent(market)}/pairs`;
-  return list(await request(path, { signal }), 'items').map(pair);
+  return list(await requestJson(path, { signal }), 'items').map(pair);
 }
 
 export async function loadAvailability(draft: Pick<ScenarioDraft, 'provider' | 'market' | 'instrument' | 'timeframe'>, signal?: AbortSignal): Promise<readonly AvailabilityRange[]> {
   const query = new URLSearchParams({ provider: draft.provider, market: draft.market, instrument: draft.instrument, timeframe: draft.timeframe });
-  return list(await request(`/api/historical/cache?${query}`, { signal }), 'items').map(availability);
+  return list(await requestJson(`/api/historical/cache?${query}`, { signal }), 'items').map(availability);
 }
 
 export async function loadHistoricalOperations(signal?: AbortSignal): Promise<readonly HistoricalOperation[]> {
-  return list(await request('/api/historical/operations', { signal }), 'items').map(operation);
+  return list(await requestJson('/api/historical/operations', { signal }), 'items').map(operation);
 }
 
 export async function loadHistoricalStatistics(signal?: AbortSignal): Promise<HistoricalStatistics> {
-  return statistics(field(await request('/api/historical/statistics', { signal }), 'statistics'));
+  return statistics(field(await requestJson('/api/historical/statistics', { signal }), 'statistics'));
 }
 
 export async function loadHistoricalOperation(id: string, signal?: AbortSignal): Promise<HistoricalOperation> {
-  return operation(field(await request(`/api/historical/operations/${encodeURIComponent(id)}`, { signal }), 'operation'));
+  return operation(field(await requestJson(`/api/historical/operations/${encodeURIComponent(id)}`, { signal }), 'operation'));
 }
 
 export async function acquireHistorical(draft: ScenarioDraft, token: string): Promise<HistoricalOperation> {
   const [base, quote] = draft.instrument.split('/');
   const body = { provider: draft.provider, market: draft.market, instrument: { base, quote }, timeframe: draft.timeframe, start: draft.start, end: draft.end, as_of: draft.end };
-  return operation(field(await request('/api/control/historical/acquisitions', { method: 'POST', headers: auth(token), body: JSON.stringify(body) }), 'operation'));
+  return operation(field(await requestJson('/api/control/historical/acquisitions', { method: 'POST', headers: auth(token), body: JSON.stringify(body) }), 'operation'));
 }
 
 export async function startHistorical(draft: ScenarioDraft, token: string): Promise<HistoricalOperation> {
@@ -176,18 +164,18 @@ export async function startHistorical(draft: ScenarioDraft, token: string): Prom
       agents: draft.agents.map((kind) => ({ kind, parameters: {} })), random_seed: draft.deterministicSeed,
     },
   };
-  const created = await request('/api/control/historical/scenarios', { method: 'POST', headers: auth(token), body: JSON.stringify(scenarioBody) });
+  const created = await requestJson('/api/control/historical/scenarios', { method: 'POST', headers: auth(token), body: JSON.stringify(scenarioBody) });
   const scenario = field(created, 'scenario');
   const id = text(scenario, 'scenario_id');
-  return operation(field(await request(`/api/control/historical/scenarios/${encodeURIComponent(id)}/runs`, { method: 'POST', headers: auth(token) }), 'operation'));
+  return operation(field(await requestJson(`/api/control/historical/scenarios/${encodeURIComponent(id)}/runs`, { method: 'POST', headers: auth(token) }), 'operation'));
 }
 
 export async function cancelHistorical(id: string, token: string): Promise<HistoricalOperation> {
-  return operation(field(await request(`/api/control/historical/operations/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: auth(token) }), 'operation'));
+  return operation(field(await requestJson(`/api/control/historical/operations/${encodeURIComponent(id)}/cancel`, { method: 'POST', headers: auth(token) }), 'operation'));
 }
 
 export async function loadHistoricalArtifacts(id: string, signal?: AbortSignal): Promise<HistoricalArtifacts> {
-  const value = await request(`/api/historical/operations/${encodeURIComponent(id)}/artifacts`, { signal });
+  const value = await requestJson(`/api/historical/operations/${encodeURIComponent(id)}/artifacts`, { signal });
   if (!record(value) || !record(value.run) || !record(value.run.result) || !record(value.run.ledger) || !Array.isArray(value.run.ledger.events)) throw new Error('Malformed historical artifacts');
   return {
     operation: operation(field(value, 'operation')),

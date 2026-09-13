@@ -132,9 +132,9 @@
     "semantic_hash": "58f5855e087949ce66b9be1103ce1b00"
   },
   "src/botnet_council/api/app.py": {
-    "mtime": 1789268047.4616308,
-    "seen": 1789268474.928462,
-    "ast_hash": "48f18c195d8a7f6bb22c24839ad1226d",
+    "mtime": 1789318227.0348318,
+    "seen": 1789318537.9921532,
+    "ast_hash": "120eb160a9cfb905b54cccb35804c07d",
     "semantic_hash": ""
   },
   "src/botnet_council/backtest/__init__.py": {
@@ -498,9 +498,9 @@
     "semantic_hash": "29d267dd1ddd0aa9b996d6417603aff9"
   },
   "tests/test_api.py": {
-    "mtime": 1789249227.790215,
-    "seen": 1789249434.5733654,
-    "ast_hash": "c84f09197d1a0a30095cccc8523e38df",
+    "mtime": 1789317947.9769359,
+    "seen": 1789318537.9922729,
+    "ast_hash": "4400bc462d61d8517b75d851fd0e7bec",
     "semantic_hash": ""
   },
   "tests/test_backtest.py": {
@@ -636,9 +636,9 @@
     "semantic_hash": "e76219c3a0e94855c66f694c044690b2"
   },
   "web/src/App.tsx": {
-    "mtime": 1789264131.3333757,
-    "seen": 1789264297.7696486,
-    "ast_hash": "12f717ea6ba480111a55ab9b20a3aba2",
+    "mtime": 1789319234.7110996,
+    "seen": 1789319323.8790302,
+    "ast_hash": "604ffb7ad61acb7e382489a5d1350509",
     "semantic_hash": ""
   },
   "web/src/api.test.ts": {
@@ -648,10 +648,10 @@
     "semantic_hash": "fed0dbd64002bcd2094ea74cf214626d"
   },
   "web/src/api.ts": {
-    "mtime": 1789227608.5889564,
-    "seen": 1789245579.5751185,
-    "ast_hash": "b0be8224dc67724009c4dd482d63a42a",
-    "semantic_hash": "b0be8224dc67724009c4dd482d63a42a"
+    "mtime": 1789318238.6268854,
+    "seen": 1789318537.9923198,
+    "ast_hash": "04df392d1d4b8abe98a27a7f1917a8c8",
+    "semantic_hash": ""
   },
   "web/src/liveState.test.ts": {
     "mtime": 1789227608.5889564,
@@ -948,15 +948,27 @@
     "semantic_hash": ""
   },
   "web/src/historicalApi.ts": {
-    "mtime": 1789267815.0288315,
-    "seen": 1789268474.9286022,
-    "ast_hash": "0016b6c6def8eef046427d8102118d84",
+    "mtime": 1789318824.5587077,
+    "seen": 1789319323.879038,
+    "ast_hash": "e52aff570e47db154c5dc8f954c2ed63",
     "semantic_hash": ""
   },
   "web/src/historicalView.tsx": {
-    "mtime": 1789267942.7024221,
-    "seen": 1789268474.9286036,
-    "ast_hash": "9fd256711568b37e771c89bde1ad9e6f",
+    "mtime": 1789319233.2717152,
+    "seen": 1789319323.8790395,
+    "ast_hash": "30792a01cc54dc47c7aad5c8eb5280a1",
+    "semantic_hash": ""
+  },
+  "web/src/backend.ts": {
+    "mtime": 1789317886.4475286,
+    "seen": 1789318537.9923217,
+    "ast_hash": "4f405ba7a82f6110b9d295007fbbe057",
+    "semantic_hash": ""
+  },
+  "web/src/vite-env.d.ts": {
+    "mtime": 1789318205.4892926,
+    "seen": 1789318537.992345,
+    "ast_hash": "0352474ba2918efe13895edbc3780d94",
     "semantic_hash": ""
   }
 }

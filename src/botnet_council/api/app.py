@@ -14,6 +14,7 @@ from uuid import uuid4
 from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
@@ -101,6 +102,7 @@ ALLOWED_BROWSER_ORIGINS = frozenset(
         "http://localhost:5173",
         "http://127.0.0.1:8000",
         "http://localhost:8000",
+        "https://botnet-council.smithphotography2020.chatgpt.site",
     }
 )
 
@@ -130,6 +132,15 @@ def create_app(
         version=API_VERSION,
         docs_url="/docs",
         redoc_url=None,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=sorted(ALLOWED_BROWSER_ORIGINS),
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Accept", "Authorization", "Content-Type", "X-Request-ID"],
+        allow_private_network=True,
+        expose_headers=["X-Request-ID"],
     )
     app.state.telemetry = telemetry
     app.state.experiments = experiments

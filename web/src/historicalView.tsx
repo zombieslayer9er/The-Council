@@ -23,7 +23,7 @@ import { money, percent, shortTime } from './model';
 const AGENTS = ['trend', 'mean_reversion', 'volatility', 'regime', 'seasonality', 'historical_recurrence'] as const;
 const SPEEDS = [1, 2, 10, 100, Number.POSITIVE_INFINITY] as const;
 
-export function HistoricalView({ controlEnabled }: { controlEnabled: boolean }) {
+export function HistoricalView({ controlEnabled, onConnect }: { controlEnabled: boolean; onConnect: () => Promise<void> }) {
   const [providers, setProviders] = useState<readonly HistoricalProvider[]>([]);
   const [pairs, setPairs] = useState<readonly { base: string; quote: string }[]>([]);
   const [ranges, setRanges] = useState<readonly AvailabilityRange[]>([]);
@@ -129,6 +129,19 @@ export function HistoricalView({ controlEnabled }: { controlEnabled: boolean }) 
       setOperations((current) => replaceOperation(current, value));
     } catch (cause) { setError(message(cause)); } finally { setBusy(false); }
   };
+  const connectBackend = async () => {
+    setBusy(true); setError(null);
+    try {
+      const [values] = await Promise.all([loadHistoricalProviders(), refreshOperations(), onConnect()]);
+      setProviders(values);
+      const first = values[0];
+      if (first) setDraft((current) => ({ ...current, provider: first.provider, market: first.markets[0] ?? first.provider, timeframe: first.timeframes[0] ?? current.timeframe }));
+    } catch (cause) { setError(`${message(cause)} Start the local API and allow Local Network Access for this private Site.`); } finally { setBusy(false); }
+  };
+  const applyWindow = (hours: number) => {
+    const end = new Date(); end.setUTCMinutes(0, 0, 0);
+    setDraft((current) => ({ ...current, start: new Date(end.getTime() - hours * 3_600_000).toISOString(), end: end.toISOString() }));
+  };
 
   const visible = artifacts?.candles.slice(0, visibleCount) ?? [];
   const coverage = coverageLabel(ranges, draft.start, draft.end);
@@ -138,32 +151,42 @@ export function HistoricalView({ controlEnabled }: { controlEnabled: boolean }) 
 
   return <div className="historical-lab">
     {error && <div className="error-banner historical-error" role="alert"><span>{error}</span><button onClick={() => setError(null)}>Dismiss</button></div>}
-    <section className="scenario-grid">
-      <div className="panel scenario-panel">
-        <div className="panel-title"><div><p className="eyebrow">Authoritative inputs</p><h2>Historical scenario</h2></div><span>{coverage}</span></div>
-        <div className="form-grid">
+    <section className="panel launch-panel">
+      <div className="launch-heading"><div><p className="eyebrow">Paper-only historical research</p><h2>Start a Council run</h2><p>Choose the market and test window. The backend preserves causal timing and records immutable artifacts.</p></div>{controlEnabled ? <span className="backend-chip ready">local backend ready</span> : <button className="backend-chip" disabled={busy} onClick={() => void connectBackend()}>Connect local backend</button>}</div>
+      <div className="launch-grid">
+        <Field label="Market"><select value={draft.market} onChange={(e) => setDraft({ ...draft, market: e.target.value })}>{(providers.find((item) => item.provider === draft.provider)?.markets ?? []).map((item) => <option key={item}>{item}</option>)}</select></Field>
+        <Field label="Trading pair"><select value={draft.instrument} onChange={(e) => setDraft({ ...draft, instrument: e.target.value })}>{pairs.map((item) => <option key={symbol(item)}>{symbol(item)}</option>)}</select></Field>
+        <Field label="Timeframe"><select value={draft.timeframe} onChange={(e) => setDraft({ ...draft, timeframe: e.target.value })}>{(providers.find((item) => item.provider === draft.provider)?.timeframes ?? []).map((item) => <option key={item}>{item}</option>)}</select></Field>
+        <div className="field"><span>Quick range</span><div className="segmented" aria-label="Quick historical range">{[[24, '24H'], [168, '7D'], [720, '30D']].map(([hours, label]) => <button type="button" key={label} onClick={() => applyWindow(Number(hours))}>{label}</button>)}</div></div>
+        <Field label="From"><input type="datetime-local" value={localDate(draft.start)} onChange={(e) => setDraft({ ...draft, start: isoDate(e.target.value) })}/></Field>
+        <Field label="To"><input type="datetime-local" value={localDate(draft.end)} onChange={(e) => setDraft({ ...draft, end: isoDate(e.target.value) })}/></Field>
+      </div>
+      <div className="launch-actions">
+        <div><span>Test mode</span><div className="segmented mode-toggle"><button type="button" aria-pressed={draft.blindWindowBars == null} className={draft.blindWindowBars == null ? 'selected' : ''} onClick={() => setDraft({ ...draft, blindWindowBars: null })}>Full interval</button><button type="button" aria-pressed={draft.blindWindowBars != null} className={draft.blindWindowBars != null ? 'selected' : ''} onClick={() => setDraft({ ...draft, blindWindowBars: 120 })}>Blind window</button></div></div>
+        <div className="launch-submit"><span>{coverage} · {draft.agents.length} specialists</span><button className="primary-command" disabled={busy || !controlEnabled || draft.agents.length === 0} onClick={() => void runCommand('start')}>{busy ? 'Working…' : 'Start Council'}</button></div>
+      </div>
+      <details className="advanced-settings">
+        <summary>Advanced settings and data tools</summary>
+        <div className="advanced-grid">
           <Field label="Provider"><select value={draft.provider} onChange={(e) => selectProvider(e.target.value, providers, setDraft)}>{providers.map((item) => <option key={item.provider} value={item.provider}>{item.display_name}</option>)}</select></Field>
-          <Field label="Exchange / market"><select value={draft.market} onChange={(e) => setDraft({ ...draft, market: e.target.value })}>{(providers.find((item) => item.provider === draft.provider)?.markets ?? []).map((item) => <option key={item}>{item}</option>)}</select></Field>
-          <Field label="Trading pair"><select value={draft.instrument} onChange={(e) => setDraft({ ...draft, instrument: e.target.value })}>{pairs.map((item) => <option key={symbol(item)}>{symbol(item)}</option>)}</select></Field>
-          <Field label="Candle timeframe"><select value={draft.timeframe} onChange={(e) => setDraft({ ...draft, timeframe: e.target.value })}>{(providers.find((item) => item.provider === draft.provider)?.timeframes ?? []).map((item) => <option key={item}>{item}</option>)}</select></Field>
-          <Field label="Historical start"><input type="datetime-local" value={localDate(draft.start)} onChange={(e) => setDraft({ ...draft, start: isoDate(e.target.value) })}/></Field>
-          <Field label="Historical end"><input type="datetime-local" value={localDate(draft.end)} onChange={(e) => setDraft({ ...draft, end: isoDate(e.target.value) })}/></Field>
-          <Field label="Scenario mode"><select value={draft.blindWindowBars == null ? 'normal' : 'blind'} onChange={(e) => setDraft({ ...draft, blindWindowBars: e.target.value === 'blind' ? 120 : null })}><option value="normal">Normal interval</option><option value="blind">Blind / seeded window</option></select></Field>
           <Field label="Evaluation bars"><input type="number" min="2" disabled={draft.blindWindowBars == null} value={draft.blindWindowBars ?? 120} onChange={(e) => setDraft({ ...draft, blindWindowBars: Number(e.target.value) })}/></Field>
           <Field label="Starting paper cash"><input type="number" min="1" value={draft.startingCash} onChange={(e) => setDraft({ ...draft, startingCash: Number(e.target.value) })}/></Field>
           <Field label="Deterministic seed"><input type="number" value={draft.deterministicSeed} onChange={(e) => setDraft({ ...draft, deterministicSeed: Number(e.target.value) })}/></Field>
+          <Field label="Fee (bps)"><input type="number" min="0" value={draft.feeBps} onChange={(e) => setDraft({ ...draft, feeBps: Number(e.target.value) })}/></Field>
+          <Field label="Slippage (bps)"><input type="number" min="0" value={draft.slippageBps} onChange={(e) => setDraft({ ...draft, slippageBps: Number(e.target.value) })}/></Field>
         </div>
         <fieldset className="agent-picker"><legend>Specialists</legend>{AGENTS.map((agent) => <label key={agent}><input type="checkbox" checked={draft.agents.includes(agent)} onChange={() => setDraft({ ...draft, agents: draft.agents.includes(agent) ? draft.agents.filter((item) => item !== agent) : [...draft.agents, agent] })}/>{agent.replaceAll('_', ' ')}</label>)}</fieldset>
-        <Field label="Local control token"><input type="password" autoComplete="off" value={token} placeholder={controlEnabled ? 'Bearer token for this session' : 'Control disabled by backend'} onChange={(e) => setToken(e.target.value)}/></Field>
-        <div className="command-row"><button className="secondary" disabled={busy} onClick={() => void inspectCache()}>Inspect cache</button><button className="secondary" disabled={busy || !controlEnabled} onClick={() => void runCommand('acquire')}>Acquire missing data</button><button className="primary-command" disabled={busy || !controlEnabled || draft.agents.length === 0} onClick={() => void runCommand('start')}>Start Council backtest</button></div>
-        <div className="coverage-list">{ranges.map((range) => <code key={`${range.start}-${range.end}`}>{shortTime(range.start)} → {shortTime(range.end)} · source {range.source_version}</code>)}{!ranges.length && <span>No cached intervals reported for this selection.</span>}</div>
-      </div>
-      <div className="panel operation-panel">
-        <div className="panel-title"><div><p className="eyebrow">Persistent identity</p><h2>Runs and acquisitions</h2></div><button className="secondary" onClick={() => void refreshOperations()}>Refresh</button></div>
-        <div className="operation-list">{[...operations].reverse().map((item) => <button key={item.operation_id} className={item.operation_id === selectedId ? 'operation active' : 'operation'} onClick={() => { setSelectedId(item.operation_id); setArtifacts(null); }}><span className={`run-status ${item.status}`}/><span><strong>{item.kind} · {item.status}</strong><small>{shortTime(item.updated_at)} · {(item.progress * 100).toFixed(0)}%</small></span><code>{item.operation_id.slice(0, 10)}</code></button>)}</div>
-        {statistics && <div className="operation-actions"><Detail label="Experiments run" value={String(statistics.total_tests_executed)}/><Detail label="Learning episodes" value={String(statistics.learning_episodes_accepted)}/><Detail label="User experiments" value={String(statistics.user_initiated_learning_episodes)}/><Detail label="Experience set" value={String(statistics.current_experience_set)}/></div>}
-        {selected && <div className="operation-actions"><progress max="1" value={selected.progress}/><span>{selected.current.toLocaleString()} / {selected.total.toLocaleString()}</span>{(selected.status === 'queued' || selected.status === 'running') && <button className="danger-command" disabled={busy} onClick={() => void cancel()}>Stop / cancel</button>}<Detail label="Run ID" value={selected.result_run_id ?? 'pending'}/><Detail label="Learning" value={selected.learning_status}/><Detail label="Learning detail" value={selected.learning_message ?? 'pending'}/><Detail label="Error" value={selected.error ?? 'none'}/></div>}
-      </div>
+        <Field label="Local control token"><input type="password" autoComplete="off" value={token} placeholder={controlEnabled ? 'Bearer token for this session' : 'Start the local backend with control enabled'} onChange={(e) => setToken(e.target.value)}/></Field>
+        <div className="command-row"><button className="secondary" disabled={busy} onClick={() => void inspectCache()}>Inspect cache</button><button className="secondary" disabled={busy || !controlEnabled} onClick={() => void runCommand('acquire')}>Acquire missing data</button></div>
+        <div className="coverage-list">{ranges.map((range) => <code key={`${range.start}-${range.end}`}>{shortTime(range.start)} → {shortTime(range.end)} · source {range.source_version}</code>)}{!ranges.length && <span>Inspect the cache to see available intervals.</span>}</div>
+      </details>
+    </section>
+
+    <section className="panel operation-panel">
+      <div className="panel-title"><div><p className="eyebrow">Run history</p><h2>Recent activity</h2></div><button className="secondary" onClick={() => void refreshOperations()}>Refresh</button></div>
+      {statistics && <div className="stat-strip"><Detail label="Experiments" value={String(statistics.total_tests_executed)}/><Detail label="Episodes accepted" value={String(statistics.learning_episodes_accepted)}/><Detail label="User initiated" value={String(statistics.user_initiated_learning_episodes)}/><Detail label="Experience set" value={String(statistics.current_experience_set)}/></div>}
+      <div className="operation-list">{[...operations].reverse().map((item) => <button key={item.operation_id} className={item.operation_id === selectedId ? 'operation active' : 'operation'} onClick={() => { setSelectedId(item.operation_id); setArtifacts(null); }}><span className={`run-status ${item.status}`}/><span><strong>{item.kind} · {item.status}</strong><small>{shortTime(item.updated_at)} · {(item.progress * 100).toFixed(0)}%</small></span><code>{item.operation_id.slice(0, 10)}</code></button>)}{!operations.length && <p className="inline-empty">No historical runs yet.</p>}</div>
+      {selected && <details className="operation-details" open={selected.status === 'queued' || selected.status === 'running'}><summary>Selected run details</summary><div className="operation-actions"><progress max="1" value={selected.progress}/><span>{selected.current.toLocaleString()} / {selected.total.toLocaleString()}</span>{(selected.status === 'queued' || selected.status === 'running') && <button className="danger-command" disabled={busy} onClick={() => void cancel()}>Stop / cancel</button>}<Detail label="Run ID" value={selected.result_run_id ?? 'pending'}/><Detail label="Learning" value={selected.learning_status}/><Detail label="Learning detail" value={selected.learning_message ?? 'pending'}/><Detail label="Error" value={selected.error ?? 'none'}/></div></details>}
     </section>
 
     {artifacts ? <>

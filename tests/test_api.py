@@ -21,6 +21,8 @@ from botnet_council.telemetry.events import event
 from botnet_council.telemetry.publisher import InMemoryEventBus
 from botnet_council.telemetry.sanitize import sanitize_exception
 
+PRIVATE_SITE_ORIGIN = "https://botnet-council.smithphotography2020.chatgpt.site"
+
 
 def _started(run_id: str = "run-api") -> TelemetryEvent:
     return event(
@@ -158,6 +160,37 @@ def test_websocket_rejects_untrusted_browser_origin() -> None:
     ):
         pass
     assert caught.value.code == 1008
+
+
+def test_private_site_origin_receives_scoped_local_backend_cors() -> None:
+    client = TestClient(create_app(InMemoryEventBus()))
+
+    health = client.get("/api/health", headers={"origin": PRIVATE_SITE_ORIGIN})
+    preflight = client.options(
+        "/api/control/historical/scenarios",
+        headers={
+            "origin": PRIVATE_SITE_ORIGIN,
+            "access-control-request-method": "POST",
+            "access-control-request-headers": "authorization,content-type",
+            "access-control-request-private-network": "true",
+        },
+    )
+
+    assert health.status_code == 200
+    assert health.headers["access-control-allow-origin"] == PRIVATE_SITE_ORIGIN
+    assert preflight.status_code == 200
+    assert preflight.headers["access-control-allow-origin"] == PRIVATE_SITE_ORIGIN
+    assert preflight.headers["access-control-allow-private-network"] == "true"
+    assert "authorization" in preflight.headers["access-control-allow-headers"].lower()
+
+
+def test_untrusted_origin_receives_no_cors_access() -> None:
+    client = TestClient(create_app(InMemoryEventBus()))
+
+    response = client.get("/api/health", headers={"origin": "https://evil.example"})
+
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
 
 
 def test_bounded_websocket_queue_marks_slow_consumer_for_resync() -> None:
