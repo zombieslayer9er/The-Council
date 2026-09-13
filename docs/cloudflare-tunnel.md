@@ -30,7 +30,7 @@ rules, substituting a hostname in your zone:
 
 ```yaml
 ingress:
-  - hostname: council-api.example.com
+  - hostname: bot-council.appalachiantacticalmc.com
     service: http://127.0.0.1:8000
   - service: http_status:404
 ```
@@ -41,7 +41,7 @@ identity. In the Access application's CORS settings, bypass only OPTIONS request
 FastAPI then answers the preflight using the exact origin allowlist. Do not bypass Access for any
 data or control path.
 
-The browser must first visit `https://council-api.example.com/api/health` and complete the Access
+The browser must first visit `https://bot-council.appalachiantacticalmc.com/api/health` and complete the Access
 login. The dashboard then sends the Access cookie on cross-origin REST requests. Some private
 browsing modes block third-party cookies; test in a normal browser session.
 
@@ -67,7 +67,7 @@ the tunnel hostname before publishing it:
 
 ```powershell
 Set-Location web
-$env:VITE_API_BASE_URL = 'https://council-api.example.com'
+$env:VITE_API_BASE_URL = 'https://bot-council.appalachiantacticalmc.com'
 pnpm build
 ```
 
