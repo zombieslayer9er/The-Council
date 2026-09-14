@@ -32,7 +32,10 @@ const ACTIONS = new Set(['target_exposure', 'reduce_only', 'no_action', 'abstain
 const VALIDITIES = new Set(['valid', 'invalid', 'insufficient_data']);
 const SIGNAL_TYPES = new Set(['alpha', 'volatility', 'regime']);
 const SIDES = new Set(['buy', 'sell']);
-const CAPABILITIES = new Set(['telemetry_read', 'experiment_read', 'experience_read', 'learning_read', 'experiment_control']);
+const CAPABILITIES = new Set([
+  'telemetry_read', 'experiment_read', 'historical_read', 'experience_read',
+  'learning_read', 'experiment_control', 'historical_control',
+]);
 
 export class ContractError extends Error {}
 

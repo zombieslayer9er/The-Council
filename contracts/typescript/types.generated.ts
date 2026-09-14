@@ -332,7 +332,7 @@ export interface HealthResponse {
   readonly service: 'botnet-council-telemetry';
   readonly backend_version: string;
   readonly read_only: boolean;
-  readonly capabilities: ReadonlyArray<'telemetry_read' | 'experiment_read' | 'experience_read' | 'learning_read' | 'experiment_control'>;
+  readonly capabilities: ReadonlyArray<'telemetry_read' | 'experiment_read' | 'historical_read' | 'experience_read' | 'learning_read' | 'experiment_control' | 'historical_control'>;
   readonly command_authentication: 'disabled' | 'bearer_token';
 }
 

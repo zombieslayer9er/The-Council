@@ -19,6 +19,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
 
 from botnet_council import __version__
+from botnet_council.backtest import DockerComposeCommandRunner
+from botnet_council.backtest.models import to_jsonable
 from botnet_council.council import CouncilConfig
 from botnet_council.experience import EpisodeQuery, ExperienceStore
 from botnet_council.experiments import (
@@ -30,10 +32,19 @@ from botnet_council.experiments import (
 from botnet_council.experiments.models import ExperimentAgentConfig
 from botnet_council.learning import WeightProfileStore
 from botnet_council.market_data import (
+    Asset,
     CachedHistoricalProvider,
+    FreqtradeHistoricalProvider,
+    Instrument,
     KrakenHistoricalProvider,
     ParquetMarketDataCache,
     ProviderId,
+    Timeframe,
+)
+from botnet_council.scenarios import (
+    HistoricalAcquisitionCreate,
+    HistoricalScenarioCreate,
+    HistoricalScenarioService,
 )
 from botnet_council.telemetry.contracts import (
     API_VERSION,
@@ -102,6 +113,7 @@ def create_app(
     experience_store: ExperienceStore | None = None,
     weight_store: WeightProfileStore | None = None,
     command_token: str | None = None,
+    historical_service: HistoricalScenarioService | None = None,
 ) -> FastAPI:
     if websocket_queue_limit < 1:
         raise ValueError("websocket_queue_limit must be positive")
@@ -109,6 +121,7 @@ def create_app(
     experiments = experiment_service or _default_experiment_service()
     experiences = experience_store or _configured_experience_store()
     weights = weight_store or _configured_weight_store()
+    historical = historical_service or _default_historical_service(telemetry)
     control_token = command_token or os.environ.get(CONTROL_TOKEN_ENVIRONMENT_VARIABLE)
     if control_token is not None and len(control_token) < MINIMUM_CONTROL_TOKEN_LENGTH:
         raise ValueError("command_token must contain at least 32 characters")
@@ -122,14 +135,13 @@ def create_app(
     app.state.experiments = experiments
     app.state.experiences = experiences
     app.state.weights = weights
+    app.state.historical = historical
     # One bounded worker lane serializes runs/batches while reads and streams remain live.
     experiment_limiter = CapacityLimiter(1)
 
     async def require_command_access(
         request: Request,
-        credentials: Annotated[
-            HTTPAuthorizationCredentials | None, Depends(CONTROL_BEARER)
-        ],
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(CONTROL_BEARER)],
     ) -> None:
         if control_token is None:
             raise HTTPException(503, "experiment control is disabled")
@@ -201,9 +213,10 @@ def create_app(
             "capabilities": (
                 "telemetry_read",
                 "experiment_read",
+                "historical_read",
                 *(("experience_read",) if experiences is not None else ()),
                 *(("learning_read",) if weights is not None else ()),
-                *(("experiment_control",) if control_enabled else ()),
+                *(("experiment_control", "historical_control") if control_enabled else ()),
             ),
             "command_authentication": "bearer_token" if control_enabled else "disabled",
         }
@@ -255,10 +268,7 @@ def create_app(
             item
             for item in telemetry.list_events()
             if item.correlation_id == decision_id
-            or (
-                isinstance(item.payload, dict)
-                and item.payload.get("decision_id") == decision_id
-            )
+            or (isinstance(item.payload, dict) and item.payload.get("decision_id") == decision_id)
         )
         # Public payloads are models, so correlation_id is the canonical join.
         if not events:
@@ -331,10 +341,148 @@ def create_app(
         limit: int = Query(50, ge=1, le=500), offset: int = Query(0, ge=0)
     ) -> dict[str, Any]:
         values = tuple(
-            item for item in _run_values(telemetry.list_events())
+            item
+            for item in _run_values(telemetry.list_events())
             if item["run_kind"] is RunKind.BACKTEST
         )
         return _page_values(values, limit, offset)
+
+    @app.get("/api/historical/providers")
+    async def historical_providers() -> dict[str, Any]:
+        return {"api_version": API_VERSION, "items": historical.providers()}
+
+    @app.get("/api/historical/providers/{provider}/markets/{market}/pairs")
+    async def historical_pairs(provider: ProviderId, market: str) -> dict[str, Any]:
+        try:
+            pairs = historical.pairs(provider, market)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        return {
+            "api_version": API_VERSION,
+            "items": tuple(item.model_dump(mode="json") for item in pairs),
+        }
+
+    @app.get("/api/historical/cache")
+    async def historical_cache(
+        provider: ProviderId,
+        market: str,
+        instrument: str,
+        timeframe: Timeframe,
+    ) -> dict[str, Any]:
+        try:
+            base, quote = instrument.split("/", maxsplit=1)
+            ranges = historical.availability(
+                provider,
+                market,
+                Instrument(base=Asset(base), quote=Asset(quote)),
+                timeframe,
+            )
+        except (ValueError, LookupError) as error:
+            raise HTTPException(422, str(error)) from error
+        return {"api_version": API_VERSION, "items": to_jsonable(ranges)}
+
+    @app.post(
+        "/api/control/historical/acquisitions",
+        status_code=202,
+        dependencies=[Depends(require_command_access)],
+    )
+    async def acquire_historical(body: HistoricalAcquisitionCreate) -> dict[str, Any]:
+        try:
+            operation = historical.start_acquisition(body.domain())
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        return {"api_version": API_VERSION, "operation": to_jsonable(operation)}
+
+    @app.post(
+        "/api/control/historical/scenarios",
+        status_code=201,
+        dependencies=[Depends(require_command_access)],
+    )
+    async def define_historical_scenario(body: HistoricalScenarioCreate) -> dict[str, Any]:
+        try:
+            scenario = historical.define(body.domain())
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
+        return {"api_version": API_VERSION, "scenario": to_jsonable(scenario)}
+
+    @app.get("/api/historical/scenarios/{scenario_id}")
+    async def historical_scenario(scenario_id: str) -> dict[str, Any]:
+        try:
+            scenario = historical.scenario(scenario_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "scenario": to_jsonable(scenario)}
+
+    @app.post(
+        "/api/control/historical/scenarios/{scenario_id}/runs",
+        status_code=202,
+        dependencies=[Depends(require_command_access)],
+    )
+    async def start_historical_run(scenario_id: str) -> dict[str, Any]:
+        try:
+            operation = historical.start_backtest(scenario_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "operation": to_jsonable(operation)}
+
+    @app.get("/api/historical/operations/{operation_id}")
+    async def historical_operation(operation_id: str) -> dict[str, Any]:
+        try:
+            operation = historical.operation(operation_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "operation": to_jsonable(operation)}
+
+    @app.post(
+        "/api/control/historical/operations/{operation_id}/cancel",
+        dependencies=[Depends(require_command_access)],
+    )
+    async def cancel_historical_operation(operation_id: str) -> dict[str, Any]:
+        try:
+            operation = historical.cancel(operation_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        return {"api_version": API_VERSION, "operation": to_jsonable(operation)}
+
+    def completed_historical_run(operation_id: str) -> Any:
+        try:
+            return historical.result(operation_id)
+        except LookupError as error:
+            raise HTTPException(404, str(error)) from error
+        except ValueError as error:
+            raise HTTPException(409, str(error)) from error
+
+    @app.get("/api/historical/operations/{operation_id}/result")
+    async def historical_result(operation_id: str) -> dict[str, Any]:
+        return {
+            "api_version": API_VERSION,
+            "result": to_jsonable(completed_historical_run(operation_id).result),
+        }
+
+    @app.get("/api/historical/operations/{operation_id}/candles")
+    async def historical_candles(operation_id: str) -> dict[str, Any]:
+        completed_historical_run(operation_id)
+        return {"api_version": API_VERSION, "items": to_jsonable(historical.candles(operation_id))}
+
+    @app.get("/api/historical/operations/{operation_id}/council")
+    async def historical_council(operation_id: str) -> dict[str, Any]:
+        completed_historical_run(operation_id)
+        return {
+            "api_version": API_VERSION,
+            "items": to_jsonable(historical.council_outputs(operation_id)),
+        }
+
+    @app.get("/api/historical/operations/{operation_id}/judge")
+    async def historical_judge(operation_id: str) -> dict[str, Any]:
+        run = completed_historical_run(operation_id)
+        return {
+            "api_version": API_VERSION,
+            "evaluation": {
+                "metrics": to_jsonable(run.result.metrics),
+                "benchmark": to_jsonable(run.result.benchmark),
+                "warnings": run.result.warnings,
+            },
+        }
 
     @app.get(
         "/api/backtests/{run_id}",
@@ -406,9 +554,7 @@ def create_app(
     ) -> dict[str, Any]:
         if experiences is None:
             raise HTTPException(503, "experience store is not configured")
-        values = experiences.query(
-            EpisodeQuery(symbol=symbol, training_only=training_only)
-        )
+        values = experiences.query(EpisodeQuery(symbol=symbol, training_only=training_only))
         summaries = tuple(experience_summary(item) for item in values)
         return {
             "api_version": API_VERSION,
@@ -611,9 +757,7 @@ def create_app(
             event_types=event_types,
         )
         loop = asyncio.get_running_loop()
-        queue: asyncio.Queue[TelemetryEvent | None] = asyncio.Queue(
-            maxsize=websocket_queue_limit
-        )
+        queue: asyncio.Queue[TelemetryEvent | None] = asyncio.Queue(maxsize=websocket_queue_limit)
 
         def enqueue(item: TelemetryEvent) -> None:
             def put() -> None:
@@ -650,6 +794,23 @@ def _default_experiment_service() -> ExperimentService:
         KrakenHistoricalProvider(), ParquetMarketDataCache(Path(".market-data-cache"))
     )
     return ExperimentService(provider, FileExperimentRepository(Path("experiment-results")))
+
+
+def _default_historical_service(telemetry: InMemoryEventBus) -> HistoricalScenarioService:
+    root = Path.cwd()
+    compose_file = root / "integrations" / "freqtrade" / "compose.yaml"
+    provider = FreqtradeHistoricalProvider(
+        root / "integrations" / "freqtrade" / "user_data" / "data",
+        runner=DockerComposeCommandRunner(
+            compose_file, root, service="freqtrade-data"
+        ),
+    )
+    return HistoricalScenarioService(
+        {ProviderId.FREQTRADE: provider},
+        ParquetMarketDataCache(root / ".market-data-cache"),
+        root / "historical-results",
+        telemetry=telemetry,
+    )
 
 
 def _configured_experience_store() -> ExperienceStore | None:
@@ -846,9 +1007,7 @@ def _parse_event_types(value: str | None) -> frozenset[EventType] | None:
         raise ValueError("event_type contains an unsupported value") from error
 
 
-def _enqueue_or_lag(
-    queue: asyncio.Queue[TelemetryEvent | None], item: TelemetryEvent
-) -> None:
+def _enqueue_or_lag(queue: asyncio.Queue[TelemetryEvent | None], item: TelemetryEvent) -> None:
     if queue.full():
         while not queue.empty():
             queue.get_nowait()

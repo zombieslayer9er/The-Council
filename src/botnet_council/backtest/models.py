@@ -59,6 +59,7 @@ class AgentConfig(BacktestModel):
 class BacktestConfig(BacktestModel):
     instrument: str
     timeframe: str
+    market: str = ""
     start: datetime
     end: datetime
     starting_cash: float = Field(gt=0, allow_inf_nan=False)
@@ -69,6 +70,7 @@ class BacktestConfig(BacktestModel):
     risk: RiskPolicy = Field(default_factory=RiskPolicy)
     random_seed: int = 0
     warmup_bars: int | None = Field(default=None, ge=0)
+    decision_cadence_bars: int = Field(default=1, ge=1)
 
     @field_validator("start", "end")
     @classmethod
@@ -92,6 +94,10 @@ class BacktestConfig(BacktestModel):
             raise ValueError("instrument and at least one agent are required")
         if len({agent.kind for agent in self.agents}) != len(self.agents):
             raise ValueError("backtest agent kinds must be unique")
+        if any(
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for character in self.market
+        ):
+            raise ValueError("market must be a lowercase provider-safe identifier")
         return self
 
     @property

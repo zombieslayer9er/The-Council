@@ -47,7 +47,8 @@ boundary contracts.
 
 - A common `SpecialistAgent` protocol and versioned, snapshot-bound `AgentSignal` schema.
 - Typed historical OHLCV requests, explicit candle availability, a read-only Kraken
-  Spot adapter, quality/gap reports, and a provenance-preserving Parquet cache.
+  Spot adapter, Freqtrade-backed acquisition, quality/gap reports, and a
+  provenance-preserving interval-aware Parquet cache.
 - Deterministic Trend, Mean Reversion, Seasonality, Historical Recurrence, Volatility, and
   Regime specialists.
 - An order-independent weighted council. Only alpha signals vote directionally;
@@ -104,6 +105,8 @@ This only verifies Docker, pulls the pinned image, and runs a disposable version
 Historical data download and backtest commands are documented in
 [`docs/freqtrade-docker.md`](docs/freqtrade-docker.md); no live-trading mode or exchange
 credentials are supported.
+The provider discovery, automatic acquisition, blind scenario, progress/cancellation,
+and result APIs are documented in [`docs/historical-scenarios.md`](docs/historical-scenarios.md).
 
 ### Telemetry dashboard
 
@@ -131,8 +134,8 @@ specialist. An OpenAI Agents SDK wrapper or local-model wrapper belongs inside a
 agent implementation and must convert provider output into a validated
 `AgentSignal`; the council protocol does not change.
 
-Implement `MarketDataProvider` and `HistoricalMarketDataProvider` for historical files
-or a read-only market feed.
+Implement `MarketDataProvider`, `HistoricalMarketDataProvider`, or the discovery-capable
+`HistoricalDataProvider` for historical files or a read-only market feed.
 Implement `ExecutionAdapter` only for simulation. Freqtrade-specific code belongs
 under `adapters/`; see [`docs/extending.md`](docs/extending.md).
 Kraken timestamp and cache semantics are documented in

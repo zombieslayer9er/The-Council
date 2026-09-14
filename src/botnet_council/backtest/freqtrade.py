@@ -85,10 +85,14 @@ class DockerComposeCommandRunner:
         workspace_root: str | Path,
         *,
         docker_executable: str = "docker",
+        service: str = "freqtrade",
     ) -> None:
         self._compose_file = Path(compose_file).resolve()
         self._workspace_root = Path(workspace_root).resolve()
         self._docker_executable = docker_executable
+        if service not in {"freqtrade", "freqtrade-data"}:
+            raise ValueError("Docker runner service must be freqtrade or freqtrade-data")
+        self._service = service
         if not self._compose_file.is_file():
             raise ValueError(f"Compose file does not exist: {self._compose_file}")
         if not self._workspace_root.is_dir():
@@ -140,7 +144,7 @@ class DockerComposeCommandRunner:
             "--rm",
             "--no-deps",
             "-T",
-            "freqtrade",
+            self._service,
             *command[1:],
         )
         environment = os.environ.copy()

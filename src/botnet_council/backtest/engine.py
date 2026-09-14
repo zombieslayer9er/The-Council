@@ -81,6 +81,10 @@ from botnet_council.telemetry.serializers import (
 from botnet_council.telemetry.serializers import snapshot as serialize_snapshot
 
 
+class BacktestCancelledError(RuntimeError):
+    """Raised at a deterministic event boundary after cooperative cancellation."""
+
+
 class BacktestEngine:
     def __init__(
         self,
@@ -92,12 +96,16 @@ class BacktestEngine:
         self._market_data = market_data
         self._telemetry = telemetry
 
-    def run(self, config: BacktestConfig) -> BacktestRun:
+    def run(
+        self,
+        config: BacktestConfig,
+        *,
+        should_cancel: Callable[[], bool] | None = None,
+        on_progress: Callable[[int, int], None] | None = None,
+    ) -> BacktestRun:
         agents = _build_agents(config)
         delta = timeframe_delta(config.timeframe)
-        required_warmup = max(
-            (warmup_bars(agent, config.timeframe) for agent in agents), default=0
-        )
+        required_warmup = max((warmup_bars(agent, config.timeframe) for agent in agents), default=0)
         effective_warmup = max(required_warmup, config.warmup_bars or 0)
         history_start = config.start - effective_warmup * delta
         # The extra bar exposes only its opening at evaluation_end. Its later fields
@@ -111,6 +119,7 @@ class BacktestEngine:
             start=history_start,
             end=history_end,
             as_of=history_end,
+            market=config.market,
         )
         history = self._market_data.fetch_historical(request)
         if history.request != request:
@@ -165,7 +174,10 @@ class BacktestEngine:
         exposure_samples: list[float] = []
         latest_market_mark: _MarketMark | None = None
 
+        decision_index = 0
         for simulation_time in event_times:
+            if should_cancel is not None and should_cancel():
+                raise BacktestCancelledError("backtest cancellation requested")
             lifecycle: list[OrderLifecycleRecord] = []
             report = None
             reconciliation = None
@@ -275,7 +287,14 @@ class BacktestEngine:
             risk_decision = None
             queued_order = None
             measured = config.start <= simulation_time <= config.end
+            should_decide = (
+                config.start <= simulation_time < config.end
+                and snapshot is not None
+                and decision_index % config.decision_cadence_bars == 0
+            )
             if config.start <= simulation_time < config.end and snapshot is not None:
+                decision_index += 1
+            if should_decide and snapshot is not None:
                 context = AgentContext(
                     run_id=run_id,
                     parameters={"random_seed": config.random_seed},
@@ -456,6 +475,8 @@ class BacktestEngine:
                 ),
                 config,
             )
+            if on_progress is not None:
+                on_progress(len(events), len(event_times))
 
         if pending is not None:
             raise RuntimeError("backtest ended with an unprocessed queued order")
@@ -513,9 +534,7 @@ class BacktestEngine:
             trade_count=trade_count,
             data_quality_status="complete",
         )
-        run = BacktestRun(
-            result=result, ledger=BacktestLedger(run_id=run_id, events=tuple(events))
-        )
+        run = BacktestRun(result=result, ledger=BacktestLedger(run_id=run_id, events=tuple(events)))
         self._emit(
             EventType.BACKTEST_COMPLETED,
             run_id,

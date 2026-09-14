@@ -45,7 +45,11 @@ def test_health_and_collection_contracts_are_versioned() -> None:
     assert health.status_code == 200
     assert health.json()["api_version"] == "v1"
     assert health.json()["read_only"] is True
-    assert health.json()["capabilities"] == ["telemetry_read", "experiment_read"]
+    assert health.json()["capabilities"] == [
+        "telemetry_read",
+        "experiment_read",
+        "historical_read",
+    ]
     assert health.json()["command_authentication"] == "disabled"
     assert runs.json()["total"] == 1
     assert runs.json()["items"][0]["status"] == "running"
@@ -84,6 +88,7 @@ def test_optional_research_stores_are_reported_and_exposed_read_only(
     assert health["capabilities"] == [
         "telemetry_read",
         "experiment_read",
+        "historical_read",
         "experience_read",
         "learning_read",
     ]
