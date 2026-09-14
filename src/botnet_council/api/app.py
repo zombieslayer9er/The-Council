@@ -16,7 +16,7 @@ from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
 
@@ -97,6 +97,7 @@ CONTROL_TOKEN_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_CONTROL_TOKEN"
 BROWSER_ORIGINS_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_BROWSER_ORIGINS"
 EXPERIENCE_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_EXPERIENCE_STORE"
 WEIGHT_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_WEIGHT_STORE"
+DASHBOARD_URL = "https://botnet-council.smithphotography2020.chatgpt.site"
 CONTROL_BEARER = HTTPBearer(auto_error=False)
 ALLOWED_BROWSER_ORIGINS = frozenset(
     {
@@ -214,6 +215,10 @@ def create_app(
     async def internal_error(request: Request, error: Exception) -> JSONResponse:
         del error
         return _error(request, 500, "internal_error", "internal server error")
+
+    @app.get("/", include_in_schema=False)
+    async def dashboard() -> RedirectResponse:
+        return RedirectResponse(DASHBOARD_URL, status_code=302)
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> dict[str, Any]:

@@ -35,6 +35,15 @@ def _started(run_id: str = "run-api") -> TelemetryEvent:
     )
 
 
+def test_root_redirects_authenticated_visitors_to_private_dashboard() -> None:
+    client = TestClient(create_app(InMemoryEventBus()))
+
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["location"] == PRIVATE_SITE_ORIGIN
+
+
 def test_health_and_collection_contracts_are_versioned() -> None:
     bus = InMemoryEventBus()
     bus.publish(_started())
