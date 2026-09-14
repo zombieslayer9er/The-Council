@@ -4,6 +4,7 @@ import App from './App';
 import './styles.css';
 import './research.css';
 import './runButton.css';
+import './historical.css';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

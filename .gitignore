@@ -16,6 +16,7 @@ paper_state/
 .market-data-cache/
 backtest-results/
 experiment-results/
+experience-store/
 historical-results/
 integrations/freqtrade/user_data/
 node_modules/

@@ -1,4 +1,5 @@
 import type { BootstrapResponse, ExperiencePage, ExperienceResponse, ExperimentEvaluationResponse, ExperimentForecastResponse, ExperimentOracleResponse, ExperimentPage, HealthResponse, LearningReviewPage, RunDetailResponse, TelemetryEvent, WeightGenerationPage } from '../../contracts/typescript/types.generated';
+import { BackendProblem, backendWebSocketUrl, requestJson } from './backend';
 import { ContractError, parseBootstrap, parseExperiencePage, parseExperienceResponse, parseExperimentEvaluationResponse, parseExperimentForecastResponse, parseExperimentOracleResponse, parseExperimentPage, parseHealth, parseLearningReviewPage, parseRunDetail, parseTelemetryEvent, parseWeightGenerationPage } from './validate';
 
 export interface BootstrapData { health: HealthResponse; bootstrap: BootstrapResponse }
@@ -15,48 +16,36 @@ export interface ResearchData {
   reviews: LearningReviewPage | null;
 }
 
-export class ApiProblem extends Error {
-  constructor(message: string, readonly status?: number) { super(message); }
-}
-
-async function getUnknown(path: string, signal?: AbortSignal): Promise<unknown> {
-  const response = await fetch(path, { signal, headers: { Accept: 'application/json' } });
-  const body: unknown = await response.json().catch(() => null);
-  if (!response.ok) {
-    const error = isRecord(body) && isRecord(body.error) ? body.error : null;
-    throw new ApiProblem(error && typeof error.message === 'string' ? error.message : `Request failed (${response.status})`, response.status);
-  }
-  return body;
-}
+export { BackendProblem as ApiProblem };
 
 export async function bootstrap(signal?: AbortSignal): Promise<BootstrapData> {
-  const [health, snapshot] = await Promise.all([getUnknown('/api/health', signal), getUnknown('/api/bootstrap', signal)]);
+  const [health, snapshot] = await Promise.all([requestJson('/api/health', { signal }), requestJson('/api/bootstrap', { signal })]);
   return { health: parseHealth(health), bootstrap: parseBootstrap(snapshot) };
 }
 
 export async function loadRun(runId: string, signal?: AbortSignal): Promise<RunDetailResponse> {
-  return parseRunDetail(await getUnknown(`/api/runs/${encodeURIComponent(runId)}`, signal));
+  return parseRunDetail(await requestJson(`/api/runs/${encodeURIComponent(runId)}`, { signal }));
 }
 
 export async function loadResearch(capabilities: readonly string[], signal?: AbortSignal): Promise<ResearchData> {
   const [experiments, experiences, weights, reviews] = await Promise.all([
-    getUnknown('/api/experiments?limit=500', signal).then(parseExperimentPage),
-    capabilities.includes('experience_read') ? getUnknown('/api/experiences?limit=500', signal).then(parseExperiencePage) : null,
-    capabilities.includes('learning_read') ? getUnknown('/api/weight-generations', signal).then(parseWeightGenerationPage) : null,
-    capabilities.includes('learning_read') ? getUnknown('/api/learning-reviews', signal).then(parseLearningReviewPage) : null,
+    requestJson('/api/experiments?limit=500', { signal }).then(parseExperimentPage),
+    capabilities.includes('experience_read') ? requestJson('/api/experiences?limit=500', { signal }).then(parseExperiencePage) : null,
+    capabilities.includes('learning_read') ? requestJson('/api/weight-generations', { signal }).then(parseWeightGenerationPage) : null,
+    capabilities.includes('learning_read') ? requestJson('/api/learning-reviews', { signal }).then(parseLearningReviewPage) : null,
   ]);
   return { experiments, experiences, weights, reviews };
 }
 
 export async function loadExperience(episodeId: string, signal?: AbortSignal): Promise<ExperienceResponse> {
-  return parseExperienceResponse(await getUnknown(`/api/experiences/${encodeURIComponent(episodeId)}`, signal));
+  return parseExperienceResponse(await requestJson(`/api/experiences/${encodeURIComponent(episodeId)}`, { signal }));
 }
 
 export async function loadExperimentEvidence(experimentId: string, availability: { forecast: boolean; oracle: boolean; evaluation: boolean }, signal?: AbortSignal) {
   const [forecast, oracle, evaluation] = await Promise.all([
-    availability.forecast ? getUnknown(`/api/experiments/${encodeURIComponent(experimentId)}/forecast`, signal).then(parseExperimentForecastResponse) : null,
-    availability.oracle ? getUnknown(`/api/experiments/${encodeURIComponent(experimentId)}/oracle`, signal).then(parseExperimentOracleResponse) : null,
-    availability.evaluation ? getUnknown(`/api/experiments/${encodeURIComponent(experimentId)}/evaluation`, signal).then(parseExperimentEvaluationResponse) : null,
+    availability.forecast ? requestJson(`/api/experiments/${encodeURIComponent(experimentId)}/forecast`, { signal }).then(parseExperimentForecastResponse) : null,
+    availability.oracle ? requestJson(`/api/experiments/${encodeURIComponent(experimentId)}/oracle`, { signal }).then(parseExperimentOracleResponse) : null,
+    availability.evaluation ? requestJson(`/api/experiments/${encodeURIComponent(experimentId)}/evaluation`, { signal }).then(parseExperimentEvaluationResponse) : null,
   ]);
   return { forecast: forecast as ExperimentForecastResponse | null, oracle: oracle as ExperimentOracleResponse | null, evaluation: evaluation as ExperimentEvaluationResponse | null };
 }
@@ -65,8 +54,7 @@ export function openEventStream(callbacks: StreamCallbacks): () => void {
   let socket: WebSocket | null = null; let timer = 0; let stopped = false; let attempt = 0;
   const connect = () => {
     if (stopped) return;
-    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    socket = new WebSocket(`${protocol}//${location.host}/ws/events`);
+    socket = new WebSocket(backendWebSocketUrl('/ws/events'));
     socket.onopen = () => { attempt = 0; callbacks.onOpen(); };
     socket.onmessage = (message) => {
       try {

@@ -126,6 +126,8 @@ process. Evidence, Historical Recurrence analogues, weight-generation comparison
 experiment outcomes, and frozen experience replay are described in
 [`docs/dashboard.md`](docs/dashboard.md). Set `BOTNET_COUNCIL_EXPERIENCE_STORE` and
 `BOTNET_COUNCIL_WEIGHT_STORE` on the API process to expose the optional read-only stores.
+Mobile access through an outbound-only named Cloudflare Tunnel is documented in
+[`docs/cloudflare-tunnel.md`](docs/cloudflare-tunnel.md).
 
 ## Extension points
 

@@ -21,6 +21,7 @@ from botnet_council.backtest import (
 )
 from botnet_council.backtest.models import to_jsonable
 from botnet_council.council import CouncilConfig
+from botnet_council.experience import ExperienceStore
 from botnet_council.market_data import (
     Asset,
     CachedHistoricalProvider,
@@ -38,6 +39,7 @@ from botnet_council.risk import RiskPolicy
 from botnet_council.scenarios import (
     HistoricalScenarioRequest,
     HistoricalScenarioService,
+    LearningStatus,
     OperationStatus,
 )
 from botnet_council.schemas import MarketBar, MarketSnapshot
@@ -314,6 +316,53 @@ def test_scenario_run_is_non_blocking_persisted_and_causally_blind(tmp_path: Pat
     assert reloaded.result(operation.operation_id) == run
 
 
+def test_user_backtest_feeds_canonical_learning_store_exactly_once(tmp_path: Path) -> None:
+    source = FixtureProvider(bars())
+    cache = ParquetMarketDataCache(tmp_path / "cache")
+    experiences = ExperienceStore(tmp_path / "experiences")
+    service = HistoricalScenarioService(
+        {ProviderId.IN_MEMORY: source},
+        cache,
+        tmp_path / "results",
+        experience_store=experiences,
+    )
+    scenario = service.define(scenario_request())
+
+    first = service.start_backtest(scenario.scenario_id)
+    assert wait_for_completion(service, first.operation_id) is OperationStatus.COMPLETED
+    accepted = service.operation(first.operation_id)
+    assert accepted.learning_status is LearningStatus.ACCEPTED
+    assert accepted.learning_eligible is True
+    assert len(accepted.learning_episode_ids) == 3
+    assert len(experiences.query()) == 3
+
+    repeated = service.start_backtest(scenario.scenario_id)
+    assert wait_for_completion(service, repeated.operation_id) is OperationStatus.COMPLETED
+    duplicate = service.operation(repeated.operation_id)
+    assert duplicate.learning_status is LearningStatus.REJECTED
+    assert duplicate.learning_episodes_rejected == 3
+    assert len(experiences.query()) == 3
+    assert service.statistics() == {
+        "total_tests_executed": 2,
+        "successful_completed_tests": 2,
+        "failed_cancelled_tests": 0,
+        "learning_eligible_tests": 2,
+        "learning_episodes_rejected": 3,
+        "current_experience_set": 3,
+        "learning_episodes_accepted": 3,
+        "user_initiated_learning_episodes": 3,
+        "automated_learning_episodes": 0,
+    }
+
+    reloaded = HistoricalScenarioService(
+        {ProviderId.IN_MEMORY: source},
+        cache,
+        tmp_path / "results",
+        experience_store=experiences,
+    )
+    assert reloaded.statistics() == service.statistics()
+
+
 def test_identical_scenario_definition_is_idempotent(tmp_path: Path) -> None:
     instants = iter((ORIGIN + timedelta(days=1), ORIGIN + timedelta(days=2)))
     service = HistoricalScenarioService(
@@ -388,14 +437,21 @@ def test_backtest_cancellation_is_checked_at_event_boundaries() -> None:
 
 
 def test_historical_api_exposes_discovery_and_async_run_status(tmp_path: Path) -> None:
+    experiences = ExperienceStore(tmp_path / "experiences")
     service = HistoricalScenarioService(
         {ProviderId.IN_MEMORY: FixtureProvider(bars())},
         ParquetMarketDataCache(tmp_path / "cache"),
         tmp_path / "results",
+        experience_store=experiences,
     )
     token = "historical-control-token-that-is-long-enough"
     client = TestClient(
-        create_app(InMemoryEventBus(), command_token=token, historical_service=service)
+        create_app(
+            InMemoryEventBus(),
+            command_token=token,
+            historical_service=service,
+            experience_store=experiences,
+        )
     )
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -422,6 +478,28 @@ def test_historical_api_exposes_discovery_and_async_run_status(tmp_path: Path) -
         .json()["evaluation"]["metrics"]["starting_equity"]
         == 1_000.0
     )
+    assert client.get("/api/historical/scenarios").json()["items"][0]["scenario_id"] == scenario_id
+    listed_operation = client.get("/api/historical/operations").json()["items"][0]
+    assert listed_operation["operation_id"] == operation_id
+    assert listed_operation["learning_status"] == "accepted"
+    assert client.get("/api/historical/statistics").json()["statistics"] == {
+        "total_tests_executed": 1,
+        "successful_completed_tests": 1,
+        "failed_cancelled_tests": 0,
+        "learning_eligible_tests": 1,
+        "learning_episodes_rejected": 0,
+        "current_experience_set": 3,
+        "learning_episodes_accepted": 3,
+        "user_initiated_learning_episodes": 3,
+        "automated_learning_episodes": 0,
+    }
+    artifacts = client.get(
+        f"/api/historical/operations/{operation_id}/artifacts"
+    ).json()
+    assert artifacts["operation"]["result_run_id"] == artifacts["run"]["result"]["run_id"]
+    assert artifacts["scenario"]["scenario_id"] == scenario_id
+    assert artifacts["candles"]
+    assert artifacts["run"]["ledger"]["events"]
     schemas = client.get("/openapi.json").json()["components"]["schemas"]
     assert "HistoricalScenarioCreate" in schemas
 

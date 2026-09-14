@@ -9,10 +9,12 @@ from botnet_council.experience.models import (
     OutcomeTruth,
     TemporalReplaySplit,
     episode_from_experiment,
+    episodes_from_backtest,
 )
 from botnet_council.experience.store import (
     CacheWriteStatus,
     ExperienceCorruptionError,
+    ExperienceOrigin,
     ExperienceStore,
     ExperienceStoreError,
     IncompatibleExperienceStoreError,
@@ -28,10 +30,12 @@ __all__ = [
     "EpisodeQuery",
     "ExperienceCorruptionError",
     "ExperienceEpisode",
+    "ExperienceOrigin",
     "ExperienceStore",
     "ExperienceStoreError",
     "IncompatibleExperienceStoreError",
     "OutcomeTruth",
     "TemporalReplaySplit",
+    "episodes_from_backtest",
     "episode_from_experiment",
 ]

@@ -9,12 +9,14 @@ from collections.abc import Mapping
 from hmac import compare_digest
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from anyio import CapacityLimiter, to_thread
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
 
@@ -92,8 +94,10 @@ from botnet_council.telemetry.serializers import (
 DEFAULT_WEBSOCKET_QUEUE_LIMIT = 256
 MINIMUM_CONTROL_TOKEN_LENGTH = 32
 CONTROL_TOKEN_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_CONTROL_TOKEN"
+BROWSER_ORIGINS_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_BROWSER_ORIGINS"
 EXPERIENCE_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_EXPERIENCE_STORE"
 WEIGHT_STORE_ENVIRONMENT_VARIABLE = "BOTNET_COUNCIL_WEIGHT_STORE"
+DASHBOARD_URL = "https://botnet-council.smithphotography2020.chatgpt.site"
 CONTROL_BEARER = HTTPBearer(auto_error=False)
 ALLOWED_BROWSER_ORIGINS = frozenset(
     {
@@ -101,6 +105,7 @@ ALLOWED_BROWSER_ORIGINS = frozenset(
         "http://localhost:5173",
         "http://127.0.0.1:8000",
         "http://localhost:8000",
+        "https://botnet-council.smithphotography2020.chatgpt.site",
     }
 )
 
@@ -121,8 +126,9 @@ def create_app(
     experiments = experiment_service or _default_experiment_service()
     experiences = experience_store or _configured_experience_store()
     weights = weight_store or _configured_weight_store()
-    historical = historical_service or _default_historical_service(telemetry)
+    historical = historical_service or _default_historical_service(telemetry, experiences)
     control_token = command_token or os.environ.get(CONTROL_TOKEN_ENVIRONMENT_VARIABLE)
+    allowed_browser_origins = _configured_browser_origins()
     if control_token is not None and len(control_token) < MINIMUM_CONTROL_TOKEN_LENGTH:
         raise ValueError("command_token must contain at least 32 characters")
     app = FastAPI(
@@ -130,6 +136,15 @@ def create_app(
         version=API_VERSION,
         docs_url="/docs",
         redoc_url=None,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=sorted(allowed_browser_origins),
+        allow_credentials=True,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Accept", "Authorization", "Content-Type", "X-Request-ID"],
+        allow_private_network=True,
+        expose_headers=["X-Request-ID"],
     )
     app.state.telemetry = telemetry
     app.state.experiments = experiments
@@ -146,7 +161,7 @@ def create_app(
         if control_token is None:
             raise HTTPException(503, "experiment control is disabled")
         origin = request.headers.get("origin")
-        if origin is not None and origin not in ALLOWED_BROWSER_ORIGINS:
+        if origin is not None and origin not in allowed_browser_origins:
             raise HTTPException(403, "origin is not allowed")
         if (
             credentials is None
@@ -200,6 +215,10 @@ def create_app(
     async def internal_error(request: Request, error: Exception) -> JSONResponse:
         del error
         return _error(request, 500, "internal_error", "internal server error")
+
+    @app.get("/", include_in_schema=False)
+    async def dashboard() -> RedirectResponse:
+        return RedirectResponse(DASHBOARD_URL, status_code=302)
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> dict[str, Any]:
@@ -413,12 +432,18 @@ def create_app(
             raise HTTPException(404, str(error)) from error
         return {"api_version": API_VERSION, "scenario": to_jsonable(scenario)}
 
+    @app.get("/api/historical/scenarios")
+    async def historical_scenarios() -> dict[str, Any]:
+        return {"api_version": API_VERSION, "items": to_jsonable(historical.scenarios())}
+
     @app.post(
         "/api/control/historical/scenarios/{scenario_id}/runs",
         status_code=202,
         dependencies=[Depends(require_command_access)],
     )
     async def start_historical_run(scenario_id: str) -> dict[str, Any]:
+        if not historical.learning_configured:
+            raise HTTPException(503, "experience store is not configured")
         try:
             operation = historical.start_backtest(scenario_id)
         except LookupError as error:
@@ -432,6 +457,14 @@ def create_app(
         except LookupError as error:
             raise HTTPException(404, str(error)) from error
         return {"api_version": API_VERSION, "operation": to_jsonable(operation)}
+
+    @app.get("/api/historical/operations")
+    async def historical_operations() -> dict[str, Any]:
+        return {"api_version": API_VERSION, "items": to_jsonable(historical.operations())}
+
+    @app.get("/api/historical/statistics")
+    async def historical_statistics() -> dict[str, Any]:
+        return {"api_version": API_VERSION, "statistics": historical.statistics()}
 
     @app.post(
         "/api/control/historical/operations/{operation_id}/cancel",
@@ -482,6 +515,20 @@ def create_app(
                 "benchmark": to_jsonable(run.result.benchmark),
                 "warnings": run.result.warnings,
             },
+        }
+
+    @app.get("/api/historical/operations/{operation_id}/artifacts")
+    async def historical_artifacts(operation_id: str) -> dict[str, Any]:
+        run = completed_historical_run(operation_id)
+        operation = historical.operation(operation_id)
+        if operation.scenario_id is None:
+            raise HTTPException(409, "historical operation has no scenario")
+        return {
+            "api_version": API_VERSION,
+            "operation": to_jsonable(operation),
+            "scenario": to_jsonable(historical.scenario(operation.scenario_id)),
+            "run": to_jsonable(run),
+            "candles": to_jsonable(historical.candles(operation_id)),
         }
 
     @app.get(
@@ -737,7 +784,7 @@ def create_app(
     @app.websocket("/ws/events")
     async def websocket_events(websocket: WebSocket) -> None:
         origin = websocket.headers.get("origin")
-        if origin is not None and origin not in ALLOWED_BROWSER_ORIGINS:
+        if origin is not None and origin not in allowed_browser_origins:
             await websocket.close(code=1008, reason="origin is not allowed")
             return
         try:
@@ -789,6 +836,45 @@ def create_app(
     return app
 
 
+def _configured_browser_origins() -> frozenset[str]:
+    configured = os.environ.get(BROWSER_ORIGINS_ENVIRONMENT_VARIABLE)
+    if configured is None:
+        return ALLOWED_BROWSER_ORIGINS
+    values = [item.strip() for item in configured.split(",")]
+    if not values or any(not item for item in values):
+        raise ValueError(
+            f"{BROWSER_ORIGINS_ENVIRONMENT_VARIABLE} must contain comma-separated origins"
+        )
+    return ALLOWED_BROWSER_ORIGINS | frozenset(_browser_origin(item) for item in values)
+
+
+def _browser_origin(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError(f"invalid browser origin: {value!r}") from error
+    scheme = parsed.scheme.lower()
+    hostname = parsed.hostname.lower() if parsed.hostname is not None else None
+    if (
+        scheme not in {"http", "https"}
+        or hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path
+        or parsed.query
+        or parsed.fragment
+        or "*" in hostname
+    ):
+        raise ValueError(f"invalid browser origin: {value!r}")
+    if scheme == "http" and hostname not in {"127.0.0.1", "localhost", "::1"}:
+        raise ValueError(f"non-loopback browser origin must use HTTPS: {value!r}")
+    rendered_hostname = f"[{hostname}]" if ":" in hostname else hostname
+    default_port = 80 if scheme == "http" else 443
+    rendered_port = "" if port is None or port == default_port else f":{port}"
+    return f"{scheme}://{rendered_hostname}{rendered_port}"
+
+
 def _default_experiment_service() -> ExperimentService:
     provider = CachedHistoricalProvider(
         KrakenHistoricalProvider(), ParquetMarketDataCache(Path(".market-data-cache"))
@@ -796,7 +882,9 @@ def _default_experiment_service() -> ExperimentService:
     return ExperimentService(provider, FileExperimentRepository(Path("experiment-results")))
 
 
-def _default_historical_service(telemetry: InMemoryEventBus) -> HistoricalScenarioService:
+def _default_historical_service(
+    telemetry: InMemoryEventBus, experiences: ExperienceStore | None
+) -> HistoricalScenarioService:
     root = Path.cwd()
     compose_file = root / "integrations" / "freqtrade" / "compose.yaml"
     provider = FreqtradeHistoricalProvider(
@@ -810,6 +898,7 @@ def _default_historical_service(telemetry: InMemoryEventBus) -> HistoricalScenar
         ParquetMarketDataCache(root / ".market-data-cache"),
         root / "historical-results",
         telemetry=telemetry,
+        experience_store=experiences,
     )
 
 

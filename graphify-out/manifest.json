@@ -132,9 +132,9 @@
     "semantic_hash": "58f5855e087949ce66b9be1103ce1b00"
   },
   "src/botnet_council/api/app.py": {
-    "mtime": 1789249225.0577433,
-    "seen": 1789249434.5733654,
-    "ast_hash": "438d06fe4c31107311712c86c4634e32",
+    "mtime": 1789318227.0348318,
+    "seen": 1789318537.9921532,
+    "ast_hash": "120eb160a9cfb905b54cccb35804c07d",
     "semantic_hash": ""
   },
   "src/botnet_council/backtest/__init__.py": {
@@ -258,21 +258,21 @@
     "semantic_hash": "0066a3aa5a18df57c7332bb54fb27ed6"
   },
   "src/botnet_council/experience/__init__.py": {
-    "mtime": 1789227608.5358179,
-    "seen": 1789245579.5751185,
-    "ast_hash": "4d403615dcfec861bab6446e5720ecd5",
-    "semantic_hash": "4d403615dcfec861bab6446e5720ecd5"
+    "mtime": 1789267980.501894,
+    "seen": 1789268474.928494,
+    "ast_hash": "163039e5f1e40f989a82e3062b05dd6b",
+    "semantic_hash": ""
   },
   "src/botnet_council/experience/models.py": {
-    "mtime": 1789248868.7511277,
-    "seen": 1789249434.5733654,
-    "ast_hash": "66f80ca20ef063a2f4b3cbedab463a61",
+    "mtime": 1789267980.501894,
+    "seen": 1789268474.9284956,
+    "ast_hash": "0bc9c2ad91f3ff4da9e204c8473556fa",
     "semantic_hash": ""
   },
   "src/botnet_council/experience/store.py": {
-    "mtime": 1789248873.216441,
-    "seen": 1789249434.5733654,
-    "ast_hash": "00f3928377cb2076ca0a1cd5fb0e5a6a",
+    "mtime": 1789267670.6156046,
+    "seen": 1789268474.9284968,
+    "ast_hash": "6aea1d5b1271ece3335db89899d77ef0",
     "semantic_hash": ""
   },
   "src/botnet_council/experiments/__init__.py": {
@@ -498,9 +498,9 @@
     "semantic_hash": "29d267dd1ddd0aa9b996d6417603aff9"
   },
   "tests/test_api.py": {
-    "mtime": 1789249227.790215,
-    "seen": 1789249434.5733654,
-    "ast_hash": "c84f09197d1a0a30095cccc8523e38df",
+    "mtime": 1789317947.9769359,
+    "seen": 1789318537.9922729,
+    "ast_hash": "4400bc462d61d8517b75d851fd0e7bec",
     "semantic_hash": ""
   },
   "tests/test_backtest.py": {
@@ -636,10 +636,10 @@
     "semantic_hash": "e76219c3a0e94855c66f694c044690b2"
   },
   "web/src/App.tsx": {
-    "mtime": 1789227608.5889564,
-    "seen": 1789245579.5751185,
-    "ast_hash": "e298110d7d7066f6057e43914d7732fd",
-    "semantic_hash": "e298110d7d7066f6057e43914d7732fd"
+    "mtime": 1789319234.7110996,
+    "seen": 1789319323.8790302,
+    "ast_hash": "604ffb7ad61acb7e382489a5d1350509",
+    "semantic_hash": ""
   },
   "web/src/api.test.ts": {
     "mtime": 1789227608.5889564,
@@ -648,10 +648,10 @@
     "semantic_hash": "fed0dbd64002bcd2094ea74cf214626d"
   },
   "web/src/api.ts": {
-    "mtime": 1789227608.5889564,
-    "seen": 1789245579.5751185,
-    "ast_hash": "b0be8224dc67724009c4dd482d63a42a",
-    "semantic_hash": "b0be8224dc67724009c4dd482d63a42a"
+    "mtime": 1789318238.6268854,
+    "seen": 1789318537.9923198,
+    "ast_hash": "04df392d1d4b8abe98a27a7f1917a8c8",
+    "semantic_hash": ""
   },
   "web/src/liveState.test.ts": {
     "mtime": 1789227608.5889564,
@@ -666,10 +666,10 @@
     "semantic_hash": "2754e3b57c649fc9ce11bcf08dc13e93"
   },
   "web/src/main.tsx": {
-    "mtime": 1789227608.597432,
-    "seen": 1789245579.5751185,
-    "ast_hash": "f97fa99a037cba8f679e56b900806f98",
-    "semantic_hash": "f97fa99a037cba8f679e56b900806f98"
+    "mtime": 1789264132.678423,
+    "seen": 1789264297.7696486,
+    "ast_hash": "973fb94dfde9aa696db2607864317ca1",
+    "semantic_hash": ""
   },
   "web/src/model.ts": {
     "mtime": 1789227608.597432,
@@ -912,15 +912,15 @@
     "semantic_hash": ""
   },
   "src/botnet_council/scenarios.py": {
-    "mtime": 1789249811.717187,
-    "seen": 1789249927.5572953,
-    "ast_hash": "518ef177b1904d4b5ad0ee7d01c3bcf3",
+    "mtime": 1789268046.0351553,
+    "seen": 1789268474.9285448,
+    "ast_hash": "b4ded46700cd823e1a650b3c6a8e7fc9",
     "semantic_hash": ""
   },
   "tests/test_issue17_historical_pipeline.py": {
-    "mtime": 1789249857.2443924,
-    "seen": 1789249927.5572953,
-    "ast_hash": "5f9c8d475c3d8f272453bdd014b8a148",
+    "mtime": 1789268003.445255,
+    "seen": 1789268474.9285755,
+    "ast_hash": "c261eea0d4be54dc2bee0c5f6a2bfb96",
     "semantic_hash": ""
   },
   "docs/historical-scenarios.md": {
@@ -939,6 +939,36 @@
     "mtime": 1789249944.6633024,
     "seen": 1789250290.025552,
     "ast_hash": "a651daf5c15f3c11aa78f5d289671bf3",
+    "semantic_hash": ""
+  },
+  "web/src/historicalApi.test.ts": {
+    "mtime": 1789267961.2503657,
+    "seen": 1789268474.9286003,
+    "ast_hash": "2bcfb468c3f24a29b88940257ed91c94",
+    "semantic_hash": ""
+  },
+  "web/src/historicalApi.ts": {
+    "mtime": 1789318824.5587077,
+    "seen": 1789319323.879038,
+    "ast_hash": "e52aff570e47db154c5dc8f954c2ed63",
+    "semantic_hash": ""
+  },
+  "web/src/historicalView.tsx": {
+    "mtime": 1789319233.2717152,
+    "seen": 1789319323.8790395,
+    "ast_hash": "30792a01cc54dc47c7aad5c8eb5280a1",
+    "semantic_hash": ""
+  },
+  "web/src/backend.ts": {
+    "mtime": 1789317886.4475286,
+    "seen": 1789318537.9923217,
+    "ast_hash": "4f405ba7a82f6110b9d295007fbbe057",
+    "semantic_hash": ""
+  },
+  "web/src/vite-env.d.ts": {
+    "mtime": 1789318205.4892926,
+    "seen": 1789318537.992345,
+    "ast_hash": "0352474ba2918efe13895edbc3780d94",
     "semantic_hash": ""
   }
 }
